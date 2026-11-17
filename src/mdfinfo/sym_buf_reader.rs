@@ -33,6 +33,64 @@ impl MappedFile {
             }
         }
     }
+
+    /// Hints to the OS kernel that the mapped file will be accessed sequentially.
+    #[inline]
+    pub fn advise_sequential(&self) {
+        #[cfg(unix)]
+        if let Self::Mmap(m) = self {
+            let _ = m.advise(memmap2::Advice::Sequential);
+        }
+        #[cfg(not(unix))]
+        let _ = self;
+    }
+
+    /// Hints to the OS kernel that clean file-backed pages in `[start, start + len)`
+    /// are no longer needed in the process's resident set (`MADV_DONTNEED`), rounding
+    /// inward to page boundaries and skipping spans smaller than 1 MiB.
+    #[inline]
+    pub fn advise_dontneed_range(&self, start: usize, len: usize) {
+        #[cfg(unix)]
+        if let Self::Mmap(m) = self {
+            const MIN_ADVISE_BYTES: usize = 1_048_576;
+            if len < MIN_ADVISE_BYTES {
+                return;
+            }
+            let page = page_size();
+            let end = start.saturating_add(len).min(m.len());
+            let aligned_start = start.saturating_add(page - 1) & !(page - 1);
+            let aligned_end = end & !(page - 1);
+            if aligned_end > aligned_start && aligned_end - aligned_start >= MIN_ADVISE_BYTES {
+                // SAFETY: `m` is a read-only file-backed mapping (`MAP_SHARED`) and
+                // `[aligned_start, aligned_end)` is page-aligned and within `0..m.len()`.
+                // On read-only file mappings, `MADV_DONTNEED` only unmaps clean PTEs from
+                // this process's RSS; any subsequent access re-faults from the page cache.
+                unsafe {
+                    libc::madvise(
+                        m.as_ptr().add(aligned_start) as *mut libc::c_void,
+                        aligned_end - aligned_start,
+                        libc::MADV_DONTNEED,
+                    );
+                }
+            }
+        }
+        #[cfg(not(unix))]
+        let _ = (start, len);
+    }
+}
+
+#[cfg(unix)]
+#[inline]
+fn page_size() -> usize {
+    static PAGE_SIZE: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *PAGE_SIZE.get_or_init(|| {
+        let ps = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+        if ps > 0 && (ps as usize).is_power_of_two() {
+            ps as usize
+        } else {
+            4096
+        }
+    })
 }
 
 impl Deref for MappedFile {
@@ -55,13 +113,50 @@ impl Deref for MappedFile {
 pub struct SliceCursor<'a> {
     data: &'a [u8],
     pos: usize,
+    mapped: Option<&'a MappedFile>,
 }
 
 impl<'a> SliceCursor<'a> {
     /// Creates a new cursor positioned at byte 0 of `data`.
     #[inline]
     pub fn new(data: &'a [u8]) -> Self {
-        Self { data, pos: 0 }
+        Self {
+            data,
+            pos: 0,
+            mapped: None,
+        }
+    }
+
+    /// Creates a new cursor backed by a `MappedFile`, enabling page-release `madvise` hints.
+    #[inline]
+    pub fn from_mapped(mapped: &'a MappedFile) -> Self {
+        Self {
+            data: mapped,
+            pos: 0,
+            mapped: Some(mapped),
+        }
+    }
+
+    /// Advises the OS to release clean page-table entries covering `slice` when backed by mmap.
+    #[inline]
+    pub fn advise_dontneed_slice(&self, slice: &[u8]) {
+        let Some(mapped) = self.mapped else {
+            return;
+        };
+        let base = self.data.as_ptr() as usize;
+        let ptr = slice.as_ptr() as usize;
+        let end_ptr = base + self.data.len();
+        if ptr >= base && ptr.saturating_add(slice.len()) <= end_ptr {
+            mapped.advise_dontneed_range(ptr - base, slice.len());
+        }
+    }
+
+    /// Advises the OS to release clean page-table entries in `[start, start + len)` when backed by mmap.
+    #[inline]
+    pub fn advise_dontneed_range(&self, start: usize, len: usize) {
+        if let Some(mapped) = self.mapped {
+            mapped.advise_dontneed_range(start, len);
+        }
     }
 
     /// Returns the entire underlying byte slice.

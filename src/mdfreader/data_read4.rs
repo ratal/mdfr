@@ -690,11 +690,58 @@ pub fn decode_u64_slice(
 }
 
 /// converts raw data block containing only one channel into a ndarray
+/// Decodes a full single-channel array buffer into `cn.data`.
 pub fn read_one_channel_array(
     data_bytes: &[u8],
     cn: &mut Cn4,
     cycle_count: usize,
 ) -> Result<(), Error> {
+    if !(cn.block.cn_type == 0
+        || cn.block.cn_type == 2
+        || cn.block.cn_type == 4
+        || cn.block.cn_type == 5
+        || cn.block.cn_type == 7)
+    {
+        return Ok(());
+    }
+    if cn.builder.is_none() {
+        cn.init_builder(cycle_count)?;
+    }
+    let n_bytes = cn.n_bytes as usize;
+    let elem_count = if matches!(cn.block.cn_data_type, 15 | 16) {
+        cn.list_size / 2
+    } else {
+        cn.list_size
+    };
+    let expected_len = cycle_count * n_bytes * elem_count;
+    if data_bytes.len() != expected_len {
+        bail!(
+            "read_one_channel_array: data buffer length {} does not match expected length {} (cycle_count={}, n_bytes={}, list_size={})",
+            data_bytes.len(),
+            expected_len,
+            cycle_count,
+            n_bytes,
+            cn.list_size
+        );
+    }
+    read_one_channel_array_chunk(data_bytes, cn, 0, cycle_count)?;
+    if let Some(b) = cn.builder.take() {
+        cn.data = b.finish();
+    }
+    Ok(())
+}
+
+/// Decodes `n_samples` contiguous samples for a single channel starting at `start_index`.
+/// Safe to call incrementally across streamed `##DV`/`##DZ` chunks; caller finishes `cn.builder`.
+pub fn read_one_channel_array_chunk(
+    data_bytes: &[u8],
+    cn: &mut Cn4,
+    start_index: usize,
+    n_samples: usize,
+) -> Result<(), Error> {
+    if n_samples == 0 {
+        return Ok(());
+    }
     if cn.block.cn_type == 0
         || cn.block.cn_type == 2
         || cn.block.cn_type == 4
@@ -702,7 +749,7 @@ pub fn read_one_channel_array(
         || cn.block.cn_type == 7
     {
         if cn.builder.is_none() {
-            cn.init_builder(cycle_count)?;
+            cn.init_builder(start_index + n_samples)?;
         }
         // cn_type == 5 : Maximum length data channel, removing no valid bytes done by another size channel pointed by cn_data
         // cn_type == 0 : fixed length data channel
@@ -716,13 +763,13 @@ pub fn read_one_channel_array(
         } else {
             list_size
         };
-        let expected_len = cycle_count * n_bytes * elem_count;
+        let expected_len = n_samples * n_bytes * elem_count;
         if data_bytes.len() != expected_len {
             bail!(
-                "read_one_channel_array: data buffer length {} does not match expected length {} (cycle_count={}, n_bytes={}, list_size={})",
+                "read_one_channel_array_chunk: data buffer length {} does not match expected length {} (n_samples={}, n_bytes={}, list_size={})",
                 data_bytes.len(),
                 expected_len,
-                cycle_count,
+                n_samples,
                 n_bytes,
                 list_size
             );
@@ -730,20 +777,20 @@ pub fn read_one_channel_array(
 
         // CANopen Date/Time are stored as Int64 (ms since Unix epoch); parse binary here.
         if cn.block.cn_data_type == 13 || cn.block.cn_data_type == 14 {
-            if let Some(ChannelBuilder::Int64(a)) = &mut cn.builder {
+            if let Some(ChannelBuilder::Int64(a)) = cn.builder.as_deref_mut() {
+                let dst = &mut a.values_slice_mut()[start_index..start_index + n_samples];
                 if cn.block.cn_data_type == 13 {
-                    let chunks = as_exact_chunks::<7>(data_bytes, cycle_count, "CANopen Date")?;
-                    for record in chunks {
-                        a.append_value(canopen_date_to_unix_ms(record));
+                    let chunks = as_exact_chunks::<7>(data_bytes, n_samples, "CANopen Date")?;
+                    for (d, record) in dst.iter_mut().zip(chunks) {
+                        *d = canopen_date_to_unix_ms(record);
                     }
                 } else {
-                    let chunks = as_exact_chunks::<6>(data_bytes, cycle_count, "CANopen Time")?;
-                    for record in chunks {
-                        a.append_value(canopen_time_to_unix_ms(record));
+                    let chunks = as_exact_chunks::<6>(data_bytes, n_samples, "CANopen Time")?;
+                    for (d, record) in dst.iter_mut().zip(chunks) {
+                        *d = canopen_time_to_unix_ms(record);
                     }
                 }
             }
-            cn.data = cn.builder.take().unwrap().finish();
             return Ok(());
         }
 
@@ -752,59 +799,59 @@ pub fn read_one_channel_array(
             return Ok(());
         }
         let is_big = cn.endian.is_big();
-        match cn.builder.as_mut().unwrap() {
+        match cn.builder.as_deref_mut().unwrap() {
             ChannelBuilder::Int8(a) => {
-                let buf = &mut a.values_slice_mut()[..cycle_count];
-                for (dst, &src) in buf.iter_mut().zip(&data_bytes[..cycle_count]) {
+                let buf = &mut a.values_slice_mut()[start_index..start_index + n_samples];
+                for (dst, &src) in buf.iter_mut().zip(&data_bytes[..n_samples]) {
                     *dst = src as i8;
                 }
             }
             ChannelBuilder::UInt8(a) => {
-                let buf = &mut a.values_slice_mut()[..cycle_count];
-                buf.copy_from_slice(&data_bytes[..cycle_count]);
+                let buf = &mut a.values_slice_mut()[start_index..start_index + n_samples];
+                buf.copy_from_slice(&data_bytes[..n_samples]);
             }
             ChannelBuilder::Int16(a) => {
                 decode_i16_slice(
-                    &data_bytes[..cycle_count * 2],
-                    &mut a.values_slice_mut()[..cycle_count],
+                    &data_bytes[..n_samples * 2],
+                    &mut a.values_slice_mut()[start_index..start_index + n_samples],
                     is_big,
                 )?;
             }
             ChannelBuilder::UInt16(a) => {
                 decode_u16_slice(
-                    &data_bytes[..cycle_count * 2],
-                    &mut a.values_slice_mut()[..cycle_count],
+                    &data_bytes[..n_samples * 2],
+                    &mut a.values_slice_mut()[start_index..start_index + n_samples],
                     is_big,
                 )?;
             }
             ChannelBuilder::Int32(a) => {
                 decode_i32_slice(
-                    &data_bytes[..cycle_count * n_bytes],
-                    &mut a.values_slice_mut()[..cycle_count],
+                    &data_bytes[..n_samples * n_bytes],
+                    &mut a.values_slice_mut()[start_index..start_index + n_samples],
                     n_bytes,
                     is_big,
                 )?;
             }
             ChannelBuilder::UInt32(a) => {
                 decode_u32_slice(
-                    &data_bytes[..cycle_count * n_bytes],
-                    &mut a.values_slice_mut()[..cycle_count],
+                    &data_bytes[..n_samples * n_bytes],
+                    &mut a.values_slice_mut()[start_index..start_index + n_samples],
                     n_bytes,
                     is_big,
                 )?;
             }
             ChannelBuilder::Float32(a) => {
                 decode_f32_slice(
-                    &data_bytes[..cycle_count * n_bytes],
-                    &mut a.values_slice_mut()[..cycle_count],
+                    &data_bytes[..n_samples * n_bytes],
+                    &mut a.values_slice_mut()[start_index..start_index + n_samples],
                     n_bytes,
                     is_big,
                 )?;
             }
             ChannelBuilder::Int64(a) => {
                 decode_i64_slice(
-                    &data_bytes[..cycle_count * n_bytes],
-                    &mut a.values_slice_mut()[..cycle_count],
+                    &data_bytes[..n_samples * n_bytes],
+                    &mut a.values_slice_mut()[start_index..start_index + n_samples],
                     n_bytes,
                     is_big,
                     cn.block.cn_bit_offset,
@@ -813,8 +860,8 @@ pub fn read_one_channel_array(
             }
             ChannelBuilder::UInt64(a) => {
                 decode_u64_slice(
-                    &data_bytes[..cycle_count * n_bytes],
-                    &mut a.values_slice_mut()[..cycle_count],
+                    &data_bytes[..n_samples * n_bytes],
+                    &mut a.values_slice_mut()[start_index..start_index + n_samples],
                     n_bytes,
                     is_big,
                     cn.block.cn_bit_offset,
@@ -823,26 +870,28 @@ pub fn read_one_channel_array(
             }
             ChannelBuilder::Float64(a) => {
                 decode_f64_slice(
-                    &data_bytes[..cycle_count * 8],
-                    &mut a.values_slice_mut()[..cycle_count],
+                    &data_bytes[..n_samples * 8],
+                    &mut a.values_slice_mut()[start_index..start_index + n_samples],
                     is_big,
                 )?;
             }
             ChannelBuilder::Complex32(a) => {
-                let total_elems = cycle_count * list_size;
+                let start_elem = start_index * list_size;
+                let total_elems = n_samples * list_size;
                 let elem_bytes = if n_bytes <= 4 { 2 } else { 4 };
                 decode_f32_slice(
                     &data_bytes[..total_elems * elem_bytes],
-                    &mut a.values_slice_mut()[..total_elems],
+                    &mut a.values_slice_mut()[start_elem..start_elem + total_elems],
                     elem_bytes,
                     is_big,
                 )?;
             }
             ChannelBuilder::Complex64(a) => {
-                let total_elems = cycle_count * list_size;
+                let start_elem = start_index * list_size;
+                let total_elems = n_samples * list_size;
                 decode_f64_slice(
                     &data_bytes[..total_elems * 8],
-                    &mut a.values_slice_mut()[..total_elems],
+                    &mut a.values_slice_mut()[start_elem..start_elem + total_elems],
                     is_big,
                 )?;
             }
@@ -860,7 +909,7 @@ pub fn read_one_channel_array(
                 if cn.block.cn_data_type == 6 {
                     // SBC ISO-8859-1 to be converted into UTF8
                     let mut decoder = WINDOWS_1252.new_decoder();
-                    for value in chunks.take(cycle_count) {
+                    for value in chunks.take(n_samples) {
                         dst.clear();
                         let (_result, _size, _replacement) =
                             decoder.decode_to_string(value, &mut dst, false);
@@ -869,7 +918,7 @@ pub fn read_one_channel_array(
                     }
                 } else if cn.block.cn_data_type == 7 {
                     // 7: String UTF8
-                    for value in chunks.take(cycle_count) {
+                    for value in chunks.take(n_samples) {
                         let full = str::from_utf8(value).context("Found invalid UTF-8")?;
                         let s = full.split('\0').next().unwrap_or("");
                         data.append_value(s);
@@ -878,7 +927,7 @@ pub fn read_one_channel_array(
                     // 8 | 9 :String UTF16 to be converted into UTF8
                     if cn.endian.is_big() {
                         let mut decoder = UTF_16BE.new_decoder();
-                        for record in chunks.take(cycle_count) {
+                        for record in chunks.take(n_samples) {
                             dst.clear();
                             let (_result, _size, _replacement) =
                                 decoder.decode_to_string(record, &mut dst, false);
@@ -887,7 +936,7 @@ pub fn read_one_channel_array(
                         }
                     } else {
                         let mut decoder = UTF_16LE.new_decoder();
-                        for record in chunks.take(cycle_count) {
+                        for record in chunks.take(n_samples) {
                             dst.clear();
                             let (_result, _size, _replacement) =
                                 decoder.decode_to_string(record, &mut dst, false);
@@ -908,7 +957,7 @@ pub fn read_one_channel_array(
                             bail!("not implemented BOM type");
                         }
                     };
-                    for record in chunks.take(cycle_count) {
+                    for record in chunks.take(n_samples) {
                         dst.clear();
                         let (_result, _size, _replacement) =
                             decoder.decode_to_string(record, &mut dst, false);
@@ -928,7 +977,7 @@ pub fn read_one_channel_array(
                         n_bytes
                     );
                 }
-                for value in chunks.take(cycle_count) {
+                for value in chunks.take(n_samples) {
                     a.append_value(value);
                 }
             }
@@ -942,71 +991,79 @@ pub fn read_one_channel_array(
                         n_bytes
                     );
                 }
-                for value in chunks.take(cycle_count) {
+                for value in chunks.take(n_samples) {
                     a.append_value(value)
                         .context("failed appending new value")?;
                 }
             }
             ChannelBuilder::ArrayDInt8(a) => {
-                let total_elems = cycle_count * list_size;
-                let buf = &mut a.values_slice_mut()[..total_elems];
+                let start_elem = start_index * list_size;
+                let total_elems = n_samples * list_size;
+                let buf = &mut a.values_slice_mut()[start_elem..start_elem + total_elems];
                 for (dst, &src) in buf.iter_mut().zip(&data_bytes[..total_elems]) {
                     *dst = src as i8;
                 }
             }
             ChannelBuilder::ArrayDUInt8(a) => {
-                let total_elems = cycle_count * list_size;
-                let buf = &mut a.values_slice_mut()[..total_elems];
+                let start_elem = start_index * list_size;
+                let total_elems = n_samples * list_size;
+                let buf = &mut a.values_slice_mut()[start_elem..start_elem + total_elems];
                 buf.copy_from_slice(&data_bytes[..total_elems]);
             }
             ChannelBuilder::ArrayDInt16(a) => {
-                let total_elems = cycle_count * list_size;
+                let start_elem = start_index * list_size;
+                let total_elems = n_samples * list_size;
                 decode_i16_slice(
                     &data_bytes[..total_elems * 2],
-                    &mut a.values_slice_mut()[..total_elems],
+                    &mut a.values_slice_mut()[start_elem..start_elem + total_elems],
                     is_big,
                 )?;
             }
             ChannelBuilder::ArrayDUInt16(a) => {
-                let total_elems = cycle_count * list_size;
+                let start_elem = start_index * list_size;
+                let total_elems = n_samples * list_size;
                 decode_u16_slice(
                     &data_bytes[..total_elems * 2],
-                    &mut a.values_slice_mut()[..total_elems],
+                    &mut a.values_slice_mut()[start_elem..start_elem + total_elems],
                     is_big,
                 )?;
             }
             ChannelBuilder::ArrayDInt32(a) => {
-                let total_elems = cycle_count * list_size;
+                let start_elem = start_index * list_size;
+                let total_elems = n_samples * list_size;
                 decode_i32_slice(
                     &data_bytes[..total_elems * n_bytes],
-                    &mut a.values_slice_mut()[..total_elems],
+                    &mut a.values_slice_mut()[start_elem..start_elem + total_elems],
                     n_bytes,
                     is_big,
                 )?;
             }
             ChannelBuilder::ArrayDUInt32(a) => {
-                let total_elems = cycle_count * list_size;
+                let start_elem = start_index * list_size;
+                let total_elems = n_samples * list_size;
                 decode_u32_slice(
                     &data_bytes[..total_elems * n_bytes],
-                    &mut a.values_slice_mut()[..total_elems],
+                    &mut a.values_slice_mut()[start_elem..start_elem + total_elems],
                     n_bytes,
                     is_big,
                 )?;
             }
             ChannelBuilder::ArrayDFloat32(a) => {
-                let total_elems = cycle_count * list_size;
+                let start_elem = start_index * list_size;
+                let total_elems = n_samples * list_size;
                 decode_f32_slice(
                     &data_bytes[..total_elems * n_bytes],
-                    &mut a.values_slice_mut()[..total_elems],
+                    &mut a.values_slice_mut()[start_elem..start_elem + total_elems],
                     n_bytes,
                     is_big,
                 )?;
             }
             ChannelBuilder::ArrayDInt64(a) => {
-                let total_elems = cycle_count * list_size;
+                let start_elem = start_index * list_size;
+                let total_elems = n_samples * list_size;
                 decode_i64_slice(
                     &data_bytes[..total_elems * n_bytes],
-                    &mut a.values_slice_mut()[..total_elems],
+                    &mut a.values_slice_mut()[start_elem..start_elem + total_elems],
                     n_bytes,
                     is_big,
                     cn.block.cn_bit_offset,
@@ -1014,10 +1071,11 @@ pub fn read_one_channel_array(
                 )?;
             }
             ChannelBuilder::ArrayDUInt64(a) => {
-                let total_elems = cycle_count * list_size;
+                let start_elem = start_index * list_size;
+                let total_elems = n_samples * list_size;
                 decode_u64_slice(
                     &data_bytes[..total_elems * n_bytes],
-                    &mut a.values_slice_mut()[..total_elems],
+                    &mut a.values_slice_mut()[start_elem..start_elem + total_elems],
                     n_bytes,
                     is_big,
                     cn.block.cn_bit_offset,
@@ -1025,10 +1083,11 @@ pub fn read_one_channel_array(
                 )?;
             }
             ChannelBuilder::ArrayDFloat64(a) => {
-                let total_elems = cycle_count * list_size;
+                let start_elem = start_index * list_size;
+                let total_elems = n_samples * list_size;
                 decode_f64_slice(
                     &data_bytes[..total_elems * 8],
-                    &mut a.values_slice_mut()[..total_elems],
+                    &mut a.values_slice_mut()[start_elem..start_elem + total_elems],
                     is_big,
                 )?;
             }
@@ -1042,13 +1101,15 @@ pub fn read_one_channel_array(
             && (bit_offset > 0 || bit_count != cn.n_bytes * 8)
             && !is_9byte_span
         {
+            let start_elem = start_index * list_size;
+            let count_elem = n_samples * list_size;
             macro_rules! shift_slice {
-                ($array:expr, $reg_bits:expr) => {{
+                ($array:expr, $reg_bits:expr, $start:expr, $count:expr) => {{
                     let reg_bits: u32 = $reg_bits;
                     if bit_offset + bit_count <= reg_bits && bit_count < reg_bits {
                         let left_shift = reg_bits - bit_offset - bit_count;
                         let right_shift = reg_bits - bit_count;
-                        let a = $array.values_slice_mut();
+                        let a = &mut $array.values_slice_mut()[$start..$start + $count];
                         if left_shift > 0 && right_shift > 0 {
                             a.iter_mut()
                                 .for_each(|x| *x = (*x << left_shift) >> right_shift);
@@ -1060,32 +1121,51 @@ pub fn read_one_channel_array(
                     }
                 }};
             }
-            if let Some(builder) = &mut cn.builder {
+            if let Some(builder) = cn.builder.as_deref_mut() {
                 match builder {
-                    ChannelBuilder::Int8(array) => shift_slice!(array, 8),
-                    ChannelBuilder::UInt8(array) => shift_slice!(array, 8),
-                    ChannelBuilder::Int16(array) => shift_slice!(array, 16),
-                    ChannelBuilder::UInt16(array) => shift_slice!(array, 16),
-                    ChannelBuilder::Int32(array) => shift_slice!(array, 32),
-                    ChannelBuilder::UInt32(array) => shift_slice!(array, 32),
-                    ChannelBuilder::Int64(array) => shift_slice!(array, 64),
-                    ChannelBuilder::UInt64(array) => shift_slice!(array, 64),
-                    ChannelBuilder::ArrayDInt8(array) => shift_slice!(array, 8),
-                    ChannelBuilder::ArrayDUInt8(array) => shift_slice!(array, 8),
-                    ChannelBuilder::ArrayDInt16(array) => shift_slice!(array, 16),
-                    ChannelBuilder::ArrayDUInt16(array) => shift_slice!(array, 16),
-                    ChannelBuilder::ArrayDInt32(array) => shift_slice!(array, 32),
-                    ChannelBuilder::ArrayDUInt32(array) => shift_slice!(array, 32),
-                    ChannelBuilder::ArrayDInt64(array) => shift_slice!(array, 64),
-                    ChannelBuilder::ArrayDUInt64(array) => shift_slice!(array, 64),
+                    ChannelBuilder::Int8(array) => shift_slice!(array, 8, start_index, n_samples),
+                    ChannelBuilder::UInt8(array) => shift_slice!(array, 8, start_index, n_samples),
+                    ChannelBuilder::Int16(array) => shift_slice!(array, 16, start_index, n_samples),
+                    ChannelBuilder::UInt16(array) => {
+                        shift_slice!(array, 16, start_index, n_samples)
+                    }
+                    ChannelBuilder::Int32(array) => shift_slice!(array, 32, start_index, n_samples),
+                    ChannelBuilder::UInt32(array) => {
+                        shift_slice!(array, 32, start_index, n_samples)
+                    }
+                    ChannelBuilder::Int64(array) => shift_slice!(array, 64, start_index, n_samples),
+                    ChannelBuilder::UInt64(array) => {
+                        shift_slice!(array, 64, start_index, n_samples)
+                    }
+                    ChannelBuilder::ArrayDInt8(array) => {
+                        shift_slice!(array, 8, start_elem, count_elem)
+                    }
+                    ChannelBuilder::ArrayDUInt8(array) => {
+                        shift_slice!(array, 8, start_elem, count_elem)
+                    }
+                    ChannelBuilder::ArrayDInt16(array) => {
+                        shift_slice!(array, 16, start_elem, count_elem)
+                    }
+                    ChannelBuilder::ArrayDUInt16(array) => {
+                        shift_slice!(array, 16, start_elem, count_elem)
+                    }
+                    ChannelBuilder::ArrayDInt32(array) => {
+                        shift_slice!(array, 32, start_elem, count_elem)
+                    }
+                    ChannelBuilder::ArrayDUInt32(array) => {
+                        shift_slice!(array, 32, start_elem, count_elem)
+                    }
+                    ChannelBuilder::ArrayDInt64(array) => {
+                        shift_slice!(array, 64, start_elem, count_elem)
+                    }
+                    ChannelBuilder::ArrayDUInt64(array) => {
+                        shift_slice!(array, 64, start_elem, count_elem)
+                    }
                     _ => (),
                 }
             }
         }
-        cn.data = cn.builder.take().unwrap().finish();
     }
-    // Other channel types : virtual channels cn_type 3 & 6 are handled at initialisation
-    // cn_type == 1 VLSD not possible for sorted data
     Ok(())
 }
 
@@ -1120,18 +1200,27 @@ fn extract_record_invalid_bits(
         return;
     }
     let inval_start = record_length.saturating_sub(cg_inval_bytes);
-    if let Some((Some(mask), invalid_byte_position, invalid_byte_mask)) = &mut cn.invalid_mask {
+    if let Some(mask_state) = &mut cn.invalid_mask {
+        let (invalid_byte_position, invalid_byte_mask) = mask_state.byte_pos_and_mask();
         // invalid_byte_mask == 0 signals CN_F_ALL_VALUES_INVALID (pre-filled false); keep as-is.
-        if *invalid_byte_mask == 0 {
+        if invalid_byte_mask == 0 {
             return;
         }
-        let byte_pos = inval_start + *invalid_byte_position;
-        let mask_len = mask.len();
+        let byte_pos = inval_start + invalid_byte_position;
         if byte_pos < record_length {
+            let any_invalid = data_chunk
+                .chunks_exact(record_length)
+                .any(|record| (invalid_byte_mask & record[byte_pos]) != 0);
+            if !any_invalid {
+                return;
+            }
+            let fallback_cycles = previous_index + data_chunk.chunks_exact(record_length).len();
+            let (mask, _, _) = mask_state.materialize_mut(fallback_cycles);
+            let mask_len = mask.len();
             for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
                 let sample_idx = i + previous_index;
                 if sample_idx < mask_len {
-                    mask.set_bit(sample_idx, (*invalid_byte_mask & record[byte_pos]) == 0);
+                    mask.set_bit(sample_idx, (invalid_byte_mask & record[byte_pos]) == 0);
                 }
             }
         }
@@ -1188,7 +1277,7 @@ pub fn read_channels_from_bytes_with_inval(
             );
             let is_vlsc_offset_channel = cn.block.cn_type == 7
                 && matches!(
-                    &cn.builder,
+                    cn.builder.as_deref(),
                     Some(
                         ChannelBuilder::UInt8(_)
                             | ChannelBuilder::UInt16(_)
@@ -1211,7 +1300,7 @@ pub fn read_channels_from_bytes_with_inval(
                 let is_big = cn.endian.is_big();
                 let bit_offset = cn.block.cn_bit_offset;
                 let bit_count = cn.block.cn_bit_count;
-                let builder = match &mut cn.builder {
+                let builder = match cn.builder.as_deref_mut() {
                     Some(b) => b,
                     None => return Ok(()),
                 };
@@ -1661,7 +1750,7 @@ mod tests {
         };
         Cn4 {
             header: default_short_header(BlockType::CN),
-            unique_name: name.to_string(),
+            unique_name: std::sync::Arc::from(name),
             block_position: 100,
             pos_byte_beg,
             n_bytes,
@@ -1672,7 +1761,7 @@ mod tests {
             block,
             endian: Endianness::Little,
             list_size: 1,
-            shape: (vec![1], Order::RowMajor),
+            shape: (Vec::new(), Order::RowMajor),
             invalid_mask: None,
             event_template: None,
             should_read: true,

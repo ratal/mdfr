@@ -9,15 +9,202 @@ use num::abs;
 use num::cast::AsPrimitive;
 
 use rustc_hash::FxHashMap;
+use std::borrow::Cow;
 use std::cmp::Ordering;
 
 use crate::data_holder::channel_data::ChannelData;
 use crate::data_holder::tensor_arrow::TensorArrow;
-use crate::mdfinfo::mdfinfo4::{Ca4Block, Cc4Block, CcVal, Cn4, Dg4, SharableBlocks};
+use crate::mdfinfo::mdfinfo4::{Ca4Block, Cc4Block, CcVal, Cn4, Cn4Block, Dg4, SharableBlocks};
 use fasteval::{Compiler, Evaler, Instruction, Slab};
 use rayon::prelude::*;
 
 use crate::data_holder::complex_arrow::ComplexArrow;
+
+/// Output MDF4 block signature of a channel after conversion.
+#[derive(Debug, Clone, Copy)]
+pub struct ConvertedOutputSignature {
+    pub bit_count: u32,
+    pub byte_count: u32,
+    pub data_type: u8,
+    pub is_vlsd: bool,
+    pub is_array: bool,
+    pub has_validity: bool,
+}
+
+fn channel_data_signature(data: &ChannelData, machine_endian: bool) -> ConvertedOutputSignature {
+    ConvertedOutputSignature {
+        bit_count: data.bit_count(),
+        byte_count: data.byte_count(),
+        data_type: data.data_type(machine_endian),
+        is_vlsd: matches!(
+            data,
+            ChannelData::Utf8(_) | ChannelData::VariableSizeByteArray(_)
+        ),
+        is_array: matches!(
+            data,
+            ChannelData::ArrayDInt8(_)
+                | ChannelData::ArrayDUInt8(_)
+                | ChannelData::ArrayDInt16(_)
+                | ChannelData::ArrayDUInt16(_)
+                | ChannelData::ArrayDInt32(_)
+                | ChannelData::ArrayDUInt32(_)
+                | ChannelData::ArrayDFloat32(_)
+                | ChannelData::ArrayDInt64(_)
+                | ChannelData::ArrayDUInt64(_)
+                | ChannelData::ArrayDFloat64(_)
+        ),
+        has_validity: data.validity().is_some(),
+    }
+}
+
+fn will_noop_conversion(cn: &Cn4, sharable: &SharableBlocks) -> bool {
+    if cn.is_converted || cn.data.is_empty() || cn.block.cn_cc_conversion == 0 {
+        return true;
+    }
+    let Some(conv) = sharable.cc.get(&cn.block.cn_cc_conversion) else {
+        return true;
+    };
+    match conv.cc_type {
+        0 => true,
+        1 => match &conv.cc_val {
+            CcVal::Real(v) => v.len() >= 2 && v[0] == 0.0 && abs(v[1] - 1.0) < 1e-12,
+            CcVal::Uint(_) => true,
+        },
+        2 | 4 | 5 | 6 | 7 | 8 | 9 => matches!(conv.cc_val, CcVal::Uint(_)),
+        11 => matches!(conv.cc_val, CcVal::Real(_)),
+        3 => conv.cc_ref.is_empty() || !matches!(sharable.get_tx(conv.cc_ref[0]), Ok(Some(_))),
+        _ => false,
+    }
+}
+
+/// Converts `cn.data` on the fly without mutating `cn` in place, borrowing `cn.data` when no conversion applies.
+pub fn convert_channel_data_cow<'a>(
+    cn: &'a Cn4,
+    sharable: &SharableBlocks,
+) -> Result<Cow<'a, ChannelData>, Error> {
+    if will_noop_conversion(cn, sharable) {
+        return Ok(Cow::Borrowed(&cn.data));
+    }
+    let mut tmp = Cn4 {
+        unique_name: cn.unique_name.clone(),
+        block: Cn4Block {
+            cn_cc_conversion: cn.block.cn_cc_conversion,
+            ..Default::default()
+        },
+        data: cn.data.clone(),
+        is_converted: false,
+        ..Default::default()
+    };
+    convert_channel(&mut tmp, sharable)?;
+    Ok(Cow::Owned(tmp.data))
+}
+
+/// Computes the post-conversion MDF4 block signature for `cn` without converting numeric channels upfront.
+pub fn converted_output_signature(
+    cn: &Cn4,
+    sharable: &SharableBlocks,
+    machine_endian: bool,
+) -> Result<ConvertedOutputSignature, Error> {
+    let raw = &cn.data;
+    if raw.is_empty() || will_noop_conversion(cn, sharable) {
+        return Ok(channel_data_signature(raw, machine_endian));
+    }
+    let conv = sharable
+        .cc
+        .get(&cn.block.cn_cc_conversion)
+        .expect("checked in will_noop_conversion");
+    match conv.cc_type {
+        1..=6 => {
+            if conv.cc_type == 1
+                && let CcVal::Real(v) = &conv.cc_val
+                && v.len() < 2
+            {
+                bail!(
+                    "malformed linear conversion: expected at least 2 parameters, got {}",
+                    v.len()
+                );
+            }
+            if conv.cc_type == 2
+                && let CcVal::Real(v) = &conv.cc_val
+                && v.len() < 6
+            {
+                bail!(
+                    "malformed rational conversion: expected at least 6 parameters, got {}",
+                    v.len()
+                );
+            }
+            let has_validity = raw.validity().is_some();
+            Ok(match raw {
+                ChannelData::Int8(_)
+                | ChannelData::UInt8(_)
+                | ChannelData::Int16(_)
+                | ChannelData::UInt16(_)
+                | ChannelData::Int32(_)
+                | ChannelData::UInt32(_)
+                | ChannelData::Float32(_)
+                | ChannelData::Int64(_)
+                | ChannelData::UInt64(_)
+                | ChannelData::Float64(_) => ConvertedOutputSignature {
+                    bit_count: 64,
+                    byte_count: 8,
+                    data_type: if machine_endian { 5 } else { 4 },
+                    is_vlsd: false,
+                    is_array: false,
+                    has_validity,
+                },
+                ChannelData::Complex32(_) | ChannelData::Complex64(_) => ConvertedOutputSignature {
+                    bit_count: 128,
+                    byte_count: 16,
+                    data_type: if machine_endian { 16 } else { 15 },
+                    is_vlsd: false,
+                    is_array: false,
+                    has_validity,
+                },
+                ChannelData::ArrayDInt8(_)
+                | ChannelData::ArrayDUInt8(_)
+                | ChannelData::ArrayDInt16(_)
+                | ChannelData::ArrayDUInt16(_)
+                | ChannelData::ArrayDInt32(_)
+                | ChannelData::ArrayDUInt32(_)
+                | ChannelData::ArrayDFloat32(_)
+                | ChannelData::ArrayDInt64(_)
+                | ChannelData::ArrayDUInt64(_)
+                | ChannelData::ArrayDFloat64(_) => ConvertedOutputSignature {
+                    bit_count: 64,
+                    byte_count: 8,
+                    data_type: if machine_endian { 5 } else { 4 },
+                    is_vlsd: false,
+                    is_array: true,
+                    has_validity,
+                },
+                _ => channel_data_signature(raw, machine_endian),
+            })
+        }
+        9 => {
+            if matches!(raw, ChannelData::Utf8(_)) {
+                Ok(ConvertedOutputSignature {
+                    bit_count: 64,
+                    byte_count: 8,
+                    data_type: if machine_endian { 5 } else { 4 },
+                    is_vlsd: false,
+                    is_array: false,
+                    has_validity: raw.validity().is_some(),
+                })
+            } else {
+                Ok(channel_data_signature(raw, machine_endian))
+            }
+        }
+        7 | 8 | 10 | 11 => {
+            let converted = convert_channel_data_cow(cn, sharable)?;
+            Ok(channel_data_signature(&converted, machine_endian))
+        }
+        _ => bail!(
+            "conversion type not recognised for channel {} not possible, type {}",
+            cn.unique_name,
+            conv.cc_type,
+        ),
+    }
+}
 
 /// convert a single channel into physical values as required by CCBlock content
 pub fn convert_channel(cn: &mut Cn4, sharable: &SharableBlocks) -> Result<(), Error> {

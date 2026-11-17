@@ -8,8 +8,10 @@ use crate::mdfinfo::mdfinfo4::{
 };
 use crate::mdfinfo::mdfinfo4::{Ca4Block, Cg4, Cn4, Compo, Composition, Dg4, Ds4Block};
 use crate::mdfinfo::sym_buf_reader::SliceCursor;
-use crate::mdfreader::data_read4::read_one_channel_array;
-use crate::mdfreader::data_read4::{read_channels_from_bytes, read_channels_from_bytes_with_inval};
+use crate::mdfreader::data_read4::{
+    read_channels_from_bytes, read_channels_from_bytes_with_inval, read_one_channel_array,
+    read_one_channel_array_chunk,
+};
 use crate::mdfreader::datastream_decoder;
 use anyhow::{Context, Error, Result, bail};
 use encoding_rs::{Decoder, GB18030, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252};
@@ -47,7 +49,7 @@ pub fn mdfreader4<'a>(
             for dg in info.dg.values_mut() {
                 for cg in dg.cg.values_mut() {
                     for cn in cg.cn.values_mut() {
-                        cn.should_read = channel_names.contains(&cn.unique_name);
+                        cn.should_read = channel_names.contains(&*cn.unique_name);
                     }
                 }
             }
@@ -358,6 +360,89 @@ fn read_data<'a>(
     Ok(position)
 }
 
+/// Maximum uncompressed bytes per parallel decompression batch for `##DL`/`##LD` chains.
+const MAX_DECOMP_BATCH_BYTES: usize = 32 * 1024 * 1024;
+
+#[inline]
+fn raw_block_est_len(raw: &RawCompBlock<'_>) -> usize {
+    match raw {
+        RawCompBlock::Plain(s) => s.len(),
+        RawCompBlock::Dz(h, s) => (h.dz_org_data_length as usize).max(s.len()),
+    }
+}
+
+#[inline]
+fn raw_block_slice<'a>(raw: &RawCompBlock<'a>) -> &'a [u8] {
+    match raw {
+        RawCompBlock::Plain(s) | RawCompBlock::Dz(_, s) => s,
+    }
+}
+
+fn take_raw_batch<T>(
+    iter: &mut std::iter::Peekable<std::vec::IntoIter<T>>,
+    est_len: impl Fn(&T) -> usize,
+) -> Vec<T> {
+    let mut batch = Vec::new();
+    let mut batch_est = 0usize;
+    while let Some(next_item) = iter.peek() {
+        let est = est_len(next_item);
+        if !batch.is_empty() && batch_est.saturating_add(est) > MAX_DECOMP_BATCH_BYTES {
+            break;
+        }
+        batch_est += est;
+        batch.push(iter.next().unwrap());
+    }
+    batch
+}
+
+fn single_channel_sample_bytes(cn: &Cn4) -> usize {
+    let elem_count = if matches!(cn.block.cn_data_type, 15 | 16) {
+        cn.list_size / 2
+    } else {
+        cn.list_size
+    };
+    cn.n_bytes as usize * elem_count
+}
+
+fn stream_single_channel_chunk(
+    cn: &mut Cn4,
+    block_data: &[u8],
+    remainder: &mut Vec<u8>,
+    sample_idx: &mut usize,
+    cycle_count: usize,
+    sample_bytes: usize,
+) -> Result<()> {
+    if sample_bytes == 0 || *sample_idx >= cycle_count {
+        return Ok(());
+    }
+    let mut rest = block_data;
+    if !remainder.is_empty() {
+        let need = sample_bytes - remainder.len();
+        if rest.len() < need {
+            remainder.extend_from_slice(rest);
+            return Ok(());
+        }
+        remainder.extend_from_slice(&rest[..need]);
+        read_one_channel_array_chunk(remainder, cn, *sample_idx, 1)?;
+        *sample_idx += 1;
+        remainder.clear();
+        rest = &rest[need..];
+    }
+    let avail = rest.len() / sample_bytes;
+    let take = avail.min(cycle_count - *sample_idx);
+    if take > 0 {
+        read_one_channel_array_chunk(&rest[..take * sample_bytes], cn, *sample_idx, take)?;
+        *sample_idx += take;
+    }
+    if *sample_idx < cycle_count {
+        let tail = &rest[take * sample_bytes..];
+        if !tail.is_empty() {
+            remainder.extend_from_slice(tail);
+        }
+    }
+    Ok(())
+}
+
 /// Collects raw (plain slice or compressed DZ) entries from a chain of `Dl4Block`s.
 fn collect_dl_raw_entries<'a>(
     rdr: &mut SliceCursor<'a>,
@@ -647,10 +732,12 @@ fn read_vd(
             // Reinitialize cn.data for the actual variable length data
             // cn_data_type: 6=SBC, 7=UTF-8, 8=UTF-16 LE, 9=UTF-16 BE, 10=byte array, 17=UTF-8 with BOM
             cn.builder = match cn_data_type {
-                6..=9 | 17 => Some(ChannelBuilder::Utf8(arrow::array::LargeStringBuilder::new())),
-                10 => Some(ChannelBuilder::VariableSizeByteArray(
+                6..=9 | 17 => Some(Box::new(ChannelBuilder::Utf8(
+                    arrow::array::LargeStringBuilder::new(),
+                ))),
+                10 => Some(Box::new(ChannelBuilder::VariableSizeByteArray(
                     arrow::array::LargeBinaryBuilder::new(),
-                )),
+                ))),
                 _ => continue,
             };
 
@@ -679,7 +766,7 @@ fn read_vlsd_from_slice(
     if cn.builder.is_none() {
         cn.init_builder(0)?;
     }
-    let builder = cn.builder.as_mut().unwrap();
+    let builder = cn.builder.as_deref_mut().unwrap();
     match builder {
         ChannelBuilder::Utf8(array) => {
             let cn_data_type = cn.block.cn_data_type;
@@ -773,7 +860,7 @@ fn read_vlsc_from_bytes(
     let data_length = data.len();
     let mut max_position: usize = 0;
     let mut str_buf = String::new();
-    let builder = match &mut cn.builder {
+    let builder = match cn.builder.as_deref_mut() {
         Some(b) => b,
         None => return Ok(0),
     };
@@ -897,67 +984,93 @@ fn read_independent_channel_data<'a>(
             }
         }
 
-        let decompressed = decompress_raw_blocks(
-            raw_data,
-            "failed decompressing DV DZ block in independent LD",
-        )?;
+        let sample_bytes = single_channel_sample_bytes(cn);
+        let mut chunk_sample_counts: Vec<usize> = Vec::with_capacity(raw_data.len());
+        let mut remainder: Vec<u8> = Vec::new();
+        let mut sample_idx = 0usize;
+        let mut raw_iter = raw_data.into_iter().peekable();
+        while raw_iter.peek().is_some() {
+            let batch = take_raw_batch(&mut raw_iter, raw_block_est_len);
+            let advise_slices: Vec<&'a [u8]> = batch.iter().map(raw_block_slice).collect();
+            let decompressed =
+                decompress_raw_blocks(batch, "failed decompressing DV DZ block in independent LD")?;
+            for block_data in decompressed {
+                chunk_sample_counts.push(block_data.len().checked_div(sample_bytes).unwrap_or(0));
+                stream_single_channel_chunk(
+                    cn,
+                    &block_data,
+                    &mut remainder,
+                    &mut sample_idx,
+                    cycle_count,
+                    sample_bytes,
+                )?;
+            }
+            for s in advise_slices {
+                rdr.advise_dontneed_slice(s);
+            }
+        }
+        if let Some(b) = cn.builder.take() {
+            cn.data = b.finish();
+        }
 
-        let chunk_sample_counts: Vec<usize> = if cn.n_bytes > 0 {
-            decompressed
-                .iter()
-                .map(|b| b.len() / (cn.n_bytes as usize * cn.list_size.max(1)))
-                .collect()
-        } else {
-            vec![0; decompressed.len()]
-        };
-
-        let all = concat_cow_chunks(decompressed);
-        read_one_channel_array(&all, cn, cycle_count)?;
-
-        if !raw_invalid.is_empty() && raw_invalid.iter().any(|r| r.is_some()) {
-            let decomp_inval: Vec<Option<Cow<'a, [u8]>>> = raw_invalid
-                .into_par_iter()
-                .map(|r| match r {
-                    None => Ok(None),
-                    Some(RawCompBlock::Plain(d)) => Ok(Some(Cow::Borrowed(d))),
-                    Some(RawCompBlock::Dz(h, b)) => h
-                        .decompress(b)
-                        .map(|v| Some(Cow::Owned(v)))
-                        .context("failed decompressing DI DZ block in independent LD"),
-                })
-                .collect::<Result<_>>()?;
-            if let Some((validity, _invalid_byte_pos, invalid_byte_mask)) = &mut cn.invalid_mask {
-                if let Some(mask) = validity {
-                    // invalid_byte_mask == 0 means CN_F_ALL_VALUES_INVALID (pre-filled false); keep as-is.
-                    if *invalid_byte_mask != 0 {
-                        let mut sample_offset = 0usize;
-                        for (chunk_idx, opt_inval) in decomp_inval.into_iter().enumerate() {
-                            let chunk_samples = chunk_sample_counts
-                                .get(chunk_idx)
-                                .copied()
-                                .unwrap_or(cycle_count.saturating_sub(sample_offset));
-                            if let Some(inval_bytes) = opt_inval {
-                                for local_idx in 0..chunk_samples {
-                                    let sample_idx = sample_offset + local_idx;
-                                    if sample_idx >= mask.len() {
-                                        break;
-                                    }
-                                    let byte_idx = local_idx / 8;
-                                    let bit_idx = local_idx % 8;
-                                    if byte_idx < inval_bytes.len() {
-                                        let is_invalid =
-                                            (inval_bytes[byte_idx] & (1 << bit_idx)) != 0;
-                                        mask.set_bit(sample_idx, !is_invalid);
-                                    }
+        if !raw_invalid.is_empty()
+            && raw_invalid.iter().any(|r| r.is_some())
+            && let Some(mask_state) = &mut cn.invalid_mask
+        {
+            let (_invalid_byte_pos, invalid_byte_mask) = mask_state.byte_pos_and_mask();
+            // invalid_byte_mask == 0 means CN_F_ALL_VALUES_INVALID (pre-filled false); keep as-is.
+            if invalid_byte_mask != 0 {
+                let (mask, _, _) = mask_state.materialize_mut(cycle_count);
+                let mut sample_offset = 0usize;
+                let mut chunk_idx = 0usize;
+                let mut inv_iter = raw_invalid.into_iter().peekable();
+                while inv_iter.peek().is_some() {
+                    let batch =
+                        take_raw_batch(&mut inv_iter, |r| r.as_ref().map_or(0, raw_block_est_len));
+                    let advise_slices: Vec<&'a [u8]> = batch
+                        .iter()
+                        .filter_map(|r| r.as_ref().map(raw_block_slice))
+                        .collect();
+                    let decomp_inval: Vec<Option<Cow<'a, [u8]>>> = batch
+                        .into_par_iter()
+                        .map(|r| match r {
+                            None => Ok(None),
+                            Some(RawCompBlock::Plain(d)) => Ok(Some(Cow::Borrowed(d))),
+                            Some(RawCompBlock::Dz(h, b)) => h
+                                .decompress(b)
+                                .map(|v| Some(Cow::Owned(v)))
+                                .context("failed decompressing DI DZ block in independent LD"),
+                        })
+                        .collect::<Result<_>>()?;
+                    for opt_inval in decomp_inval {
+                        let chunk_samples = chunk_sample_counts
+                            .get(chunk_idx)
+                            .copied()
+                            .unwrap_or(cycle_count.saturating_sub(sample_offset));
+                        if let Some(inval_bytes) = opt_inval {
+                            for local_idx in 0..chunk_samples {
+                                let s_idx = sample_offset + local_idx;
+                                if s_idx >= mask.len() {
+                                    break;
+                                }
+                                let byte_idx = local_idx / 8;
+                                let bit_idx = local_idx % 8;
+                                if byte_idx < inval_bytes.len() {
+                                    let is_invalid = (inval_bytes[byte_idx] & (1 << bit_idx)) != 0;
+                                    mask.set_bit(s_idx, !is_invalid);
                                 }
                             }
-                            sample_offset = sample_offset.saturating_add(chunk_samples);
                         }
+                        sample_offset = sample_offset.saturating_add(chunk_samples);
+                        chunk_idx += 1;
                     }
-                    cn.data.set_validity(mask)?;
+                    for s in advise_slices {
+                        rdr.advise_dontneed_slice(s);
+                    }
                 }
-                *validity = None;
+                cn.data.set_validity(mask)?;
             }
+            mask_state.clear_builder();
         }
     } else if id == *b"##DV" || id == *b"##DT" {
         let hdr: Dt4Block = binrw::BinReaderExt::read_le(rdr)
@@ -979,12 +1092,32 @@ fn read_independent_channel_data<'a>(
         let (dl_blocks, pos) = parser_dl4(rdr, position)?;
         let (raw_entries, pos) = collect_dl_raw_entries(rdr, &dl_blocks, pos)?;
         position = pos;
-        let decompressed = decompress_raw_blocks(
-            raw_entries,
-            "failed decompressing DZ block in independent DL/HL",
-        )?;
-        let all = concat_cow_chunks(decompressed);
-        read_one_channel_array(&all, cn, cycle_count)?;
+        let sample_bytes = single_channel_sample_bytes(cn);
+        let mut remainder: Vec<u8> = Vec::new();
+        let mut sample_idx = 0usize;
+        let mut raw_iter = raw_entries.into_iter().peekable();
+        while raw_iter.peek().is_some() {
+            let batch = take_raw_batch(&mut raw_iter, raw_block_est_len);
+            let advise_slices: Vec<&'a [u8]> = batch.iter().map(raw_block_slice).collect();
+            let decompressed =
+                decompress_raw_blocks(batch, "failed decompressing DZ block in independent DL/HL")?;
+            for block_data in decompressed {
+                stream_single_channel_chunk(
+                    cn,
+                    &block_data,
+                    &mut remainder,
+                    &mut sample_idx,
+                    cycle_count,
+                    sample_bytes,
+                )?;
+            }
+            for s in advise_slices {
+                rdr.advise_dontneed_slice(s);
+            }
+        }
+        if let Some(b) = cn.builder.take() {
+            cn.data = b.finish();
+        }
     } else {
         position += 4;
     }
@@ -1257,107 +1390,139 @@ fn read_dv_di<'a>(
         }
     }
 
-    // Phase 2: Parallel decompression
-    let decompressed_data = decompress_raw_blocks(raw_data, "failed decompressing DV DZ block")?;
-    let decompressed_invalid: Vec<Option<Cow<'a, [u8]>>> = raw_invalid
-        .into_par_iter()
-        .map(|opt_raw| -> Result<Option<Cow<'a, [u8]>>> {
-            match opt_raw {
-                None => Ok(None),
-                Some(RawCompBlock::Plain(d)) => Ok(Some(Cow::Borrowed(d))),
-                Some(RawCompBlock::Dz(header, buf)) => header
-                    .decompress(buf)
-                    .map(|v| Some(Cow::Owned(v)))
-                    .context("failed decompressing DI DZ block"),
-            }
-        })
-        .collect::<Result<_>>()?;
-
-    // Phase 3b: Copy invalid data into the pre-allocated buffer
-    // DVBLOCK only contains data bytes (no invalidation bytes; those are in DIBLOCK).
+    // Phase 2 & 3: Bounded-batch parallel decompression + sequential record assembly
     let record_length = channel_group.block.cg_data_bytes as usize;
-    if let Some(invalid) = &mut channel_group.invalid_bytes {
-        let mut previous_invalid_pos: usize = 0;
-        for (idx, opt_block_data) in decompressed_invalid.into_iter().enumerate() {
-            match opt_block_data {
-                Some(block_data) => {
-                    let block_length = block_data.len();
-                    let end = (previous_invalid_pos + block_length).min(invalid.len());
-                    if end > previous_invalid_pos {
-                        invalid[previous_invalid_pos..end]
-                            .copy_from_slice(&block_data[..end - previous_invalid_pos]);
-                    }
-                    previous_invalid_pos += block_length;
-                }
-                None => {
-                    if let Some(dv_block) = decompressed_data.get(idx) {
-                        let n_rec = dv_block.len().checked_div(record_length).unwrap_or(0);
-                        previous_invalid_pos += n_rec * cg_inval_bytes;
-                    }
-                }
-            }
-        }
-    }
+    let is_single_channel = channel_group.cn.len() == 1;
+    let mut dv_record_counts: Vec<usize> = Vec::with_capacity(raw_data.len());
+    let mut data: Vec<u8> = Vec::new();
+    let mut previous_index: usize = 0;
 
-    // Phase 3: Record assembly
-    if channel_group.cn.len() == 1 {
-        let cn = channel_group.cn.values_mut().next().unwrap();
-        let contiguous = concat_cow_chunks(decompressed_data);
-        read_one_channel_array(&contiguous, cn, cg_cycle_count)
-            .context("failed reading one channel array in read_dv_di")?;
-    } else {
-        // Sequential record assembly — use actual decompressed length (matches original
-        // parse_dz which updated dz_org_data_length = data.len() after decompression).
-        let mut data: Vec<u8> = Vec::new();
-        let mut previous_index: usize = 0;
-        for block_data in decompressed_data {
-            if previous_index >= cg_cycle_count {
-                break;
+    let mut raw_iter = raw_data.into_iter().peekable();
+    while raw_iter.peek().is_some() {
+        let batch = take_raw_batch(&mut raw_iter, raw_block_est_len);
+        let advise_slices: Vec<&'a [u8]> = batch.iter().map(raw_block_slice).collect();
+        let decompressed_data = decompress_raw_blocks(batch, "failed decompressing DV DZ block")?;
+
+        for block_data in &decompressed_data {
+            let n_rec = block_data.len().checked_div(record_length).unwrap_or(0);
+            dv_record_counts.push(n_rec);
+        }
+
+        if is_single_channel {
+            let cn = channel_group.cn.values_mut().next().unwrap();
+            let sample_bytes = single_channel_sample_bytes(cn);
+            for block_data in decompressed_data {
+                stream_single_channel_chunk(
+                    cn,
+                    &block_data,
+                    &mut data,
+                    &mut previous_index,
+                    cg_cycle_count,
+                    sample_bytes,
+                )?;
             }
-            if data.is_empty() {
-                // Fast path: no split-record remainder from previous block — read directly from block_data
-                let block_length = block_data.len();
-                let n_record_chunk = block_length.checked_div(record_length).unwrap_or(0);
-                if n_record_chunk > 0 {
+        } else {
+            for block_data in decompressed_data {
+                if previous_index >= cg_cycle_count {
+                    break;
+                }
+                if data.is_empty() {
+                    let block_length = block_data.len();
+                    let n_record_chunk = block_length.checked_div(record_length).unwrap_or(0);
+                    if n_record_chunk > 0 {
+                        let records_to_read = n_record_chunk.min(cg_cycle_count - previous_index);
+                        read_channels_from_bytes(
+                            &block_data[..record_length * records_to_read],
+                            &mut channel_group.cn,
+                            record_length,
+                            previous_index,
+                            false,
+                        )
+                        .context("failed reading channels from dv di blocks")?;
+                        previous_index += records_to_read;
+                    }
+                    let remaining = block_length % record_length;
+                    if remaining > 0 {
+                        data.extend_from_slice(&block_data[record_length * n_record_chunk..]);
+                    }
+                } else {
+                    data.extend_from_slice(&block_data);
+                    let block_length = data.len();
+                    let n_record_chunk = block_length.checked_div(record_length).unwrap_or(0);
+                    if n_record_chunk == 0 {
+                        continue;
+                    }
                     let records_to_read = n_record_chunk.min(cg_cycle_count - previous_index);
                     read_channels_from_bytes(
-                        &block_data[..record_length * records_to_read],
+                        &data[..record_length * records_to_read],
                         &mut channel_group.cn,
                         record_length,
                         previous_index,
                         false,
                     )
                     .context("failed reading channels from dv di blocks")?;
+                    let remaining = block_length % record_length;
+                    if remaining > 0 {
+                        data.copy_within(record_length * n_record_chunk.., 0);
+                        data.truncate(remaining);
+                    } else {
+                        data.clear();
+                    }
                     previous_index += records_to_read;
                 }
-                let remaining = block_length % record_length;
-                if remaining > 0 {
-                    data.extend_from_slice(&block_data[record_length * n_record_chunk..]);
+            }
+        }
+        for s in advise_slices {
+            rdr.advise_dontneed_slice(s);
+        }
+    }
+
+    // Phase 3b: Stream invalid blocks in bounded batches into the pre-allocated buffer
+    // DVBLOCK only contains data bytes (no invalidation bytes; those are in DIBLOCK).
+    if let Some(invalid) = &mut channel_group.invalid_bytes {
+        let mut previous_invalid_pos: usize = 0;
+        let mut dv_idx = 0usize;
+        let mut inv_iter = raw_invalid.into_iter().peekable();
+        while inv_iter.peek().is_some() {
+            let batch = take_raw_batch(&mut inv_iter, |r| r.as_ref().map_or(0, raw_block_est_len));
+            let advise_slices: Vec<&'a [u8]> = batch
+                .iter()
+                .filter_map(|r| r.as_ref().map(raw_block_slice))
+                .collect();
+            let decompressed_invalid: Vec<Option<Cow<'a, [u8]>>> = batch
+                .into_par_iter()
+                .map(|opt_raw| -> Result<Option<Cow<'a, [u8]>>> {
+                    match opt_raw {
+                        None => Ok(None),
+                        Some(RawCompBlock::Plain(d)) => Ok(Some(Cow::Borrowed(d))),
+                        Some(RawCompBlock::Dz(header, buf)) => header
+                            .decompress(buf)
+                            .map(|v| Some(Cow::Owned(v)))
+                            .context("failed decompressing DI DZ block"),
+                    }
+                })
+                .collect::<Result<_>>()?;
+            for opt_block_data in decompressed_invalid {
+                match opt_block_data {
+                    Some(block_data) => {
+                        let block_length = block_data.len();
+                        let end = (previous_invalid_pos + block_length).min(invalid.len());
+                        if end > previous_invalid_pos {
+                            invalid[previous_invalid_pos..end]
+                                .copy_from_slice(&block_data[..end - previous_invalid_pos]);
+                        }
+                        previous_invalid_pos += block_length;
+                    }
+                    None => {
+                        if let Some(&n_rec) = dv_record_counts.get(dv_idx) {
+                            previous_invalid_pos += n_rec * cg_inval_bytes;
+                        }
+                    }
                 }
-            } else {
-                data.extend_from_slice(&block_data);
-                let block_length = data.len();
-                let n_record_chunk = block_length.checked_div(record_length).unwrap_or(0);
-                if n_record_chunk == 0 {
-                    continue;
-                }
-                let records_to_read = n_record_chunk.min(cg_cycle_count - previous_index);
-                read_channels_from_bytes(
-                    &data[..record_length * records_to_read],
-                    &mut channel_group.cn,
-                    record_length,
-                    previous_index,
-                    false,
-                )
-                .context("failed reading channels from dv di blocks")?;
-                let remaining = block_length % record_length;
-                if remaining > 0 {
-                    data.copy_within(record_length * n_record_chunk.., 0);
-                    data.truncate(remaining);
-                } else {
-                    data.clear();
-                }
-                previous_index += records_to_read;
+                dv_idx += 1;
+            }
+            for s in advise_slices {
+                rdr.advise_dontneed_slice(s);
             }
         }
     }
@@ -1468,47 +1633,82 @@ fn parser_dl4_sorted<'a>(
         }
     }
 
-    // Phase 2: Parallel decompression (plain blocks remain zero-copy Cow::Borrowed)
-    let decompressed: Vec<(bool, Cow<'a, [u8]>)> = raw_entries
-        .into_par_iter()
-        .map(|(is_sd, raw)| -> Result<(bool, Cow<'a, [u8]>)> {
-            let data = match raw {
-                RawCompBlock::Plain(d) => Cow::Borrowed(d),
-                RawCompBlock::Dz(header, buf) => Cow::Owned(
-                    header
-                        .decompress(buf)
-                        .context("failed decompressing DZ block in DL4 sorted")?,
-                ),
-            };
-            Ok((is_sd, data))
-        })
-        .collect::<Result<_>>()?;
-
-    // Phase 3: Sequential record assembly (zero-copy when aligned)
+    // Phase 2 & 3: Bounded-batch parallel decompression + sequential record assembly
     let mut data: Vec<u8> = Vec::new();
     let mut previous_index: usize = 0;
-    for (is_sd, block_data) in decompressed {
-        if is_sd {
-            if data.is_empty() {
-                if let Some(cn) = channel_group.cn.get_mut(rec_pos) {
-                    let (idx, consumed) =
-                        read_vlsd_from_slice(&block_data, cn, previous_index, decoder)?;
-                    previous_index = idx;
-                    if consumed < block_data.len() {
-                        data.extend_from_slice(&block_data[consumed..]);
+    let mut raw_iter = raw_entries.into_iter().peekable();
+    while raw_iter.peek().is_some() {
+        let batch = take_raw_batch(&mut raw_iter, |(_, raw)| raw_block_est_len(raw));
+        let advise_slices: Vec<&'a [u8]> =
+            batch.iter().map(|(_, raw)| raw_block_slice(raw)).collect();
+        let decompressed: Vec<(bool, Cow<'a, [u8]>)> = batch
+            .into_par_iter()
+            .map(|(is_sd, raw)| -> Result<(bool, Cow<'a, [u8]>)> {
+                let data = match raw {
+                    RawCompBlock::Plain(d) => Cow::Borrowed(d),
+                    RawCompBlock::Dz(header, buf) => Cow::Owned(
+                        header
+                            .decompress(buf)
+                            .context("failed decompressing DZ block in DL4 sorted")?,
+                    ),
+                };
+                Ok((is_sd, data))
+            })
+            .collect::<Result<_>>()?;
+
+        for (is_sd, block_data) in decompressed {
+            if is_sd {
+                if data.is_empty() {
+                    if let Some(cn) = channel_group.cn.get_mut(rec_pos) {
+                        let (idx, consumed) =
+                            read_vlsd_from_slice(&block_data, cn, previous_index, decoder)?;
+                        previous_index = idx;
+                        if consumed < block_data.len() {
+                            data.extend_from_slice(&block_data[consumed..]);
+                        }
                     }
+                } else {
+                    data.extend_from_slice(&block_data);
+                    if let Some(cn) = channel_group.cn.get_mut(rec_pos) {
+                        previous_index =
+                            read_vlsd_from_bytes(&mut data, cn, previous_index, decoder)?;
+                    }
+                }
+            } else if data.is_empty() {
+                // Fast path when no partial record tail exists from the previous block
+                let block_length = block_data.len();
+                let n_record_chunk = block_length.checked_div(record_length).unwrap_or(0);
+                if previous_index < cg_cycle_count && n_record_chunk > 0 {
+                    let records_to_read = n_record_chunk.min(cg_cycle_count - previous_index);
+                    let inval_bytes =
+                        if (channel_group.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) == 0 {
+                            channel_group.block.cg_inval_bytes as usize
+                        } else {
+                            0
+                        };
+                    vlsd_channels = read_channels_from_bytes_with_inval(
+                        &block_data[..record_length * records_to_read],
+                        &mut channel_group.cn,
+                        record_length,
+                        previous_index,
+                        inval_bytes > 0,
+                        inval_bytes,
+                    )
+                    .context("could not read channels from bytes")?;
+                    previous_index += records_to_read;
+                }
+                let remaining = block_length % record_length;
+                if remaining > 0 {
+                    data.extend_from_slice(&block_data[record_length * n_record_chunk..]);
                 }
             } else {
                 data.extend_from_slice(&block_data);
-                if let Some(cn) = channel_group.cn.get_mut(rec_pos) {
-                    previous_index = read_vlsd_from_bytes(&mut data, cn, previous_index, decoder)?;
+                // Use data.len() so a partial-record tail from the previous block is included.
+                let block_length = data.len();
+                let n_record_chunk = block_length.checked_div(record_length).unwrap_or(0);
+                if previous_index >= cg_cycle_count || n_record_chunk == 0 {
+                    continue;
                 }
-            }
-        } else if data.is_empty() {
-            // Fast path when no partial record tail exists from the previous block
-            let block_length = block_data.len();
-            let n_record_chunk = block_length.checked_div(record_length).unwrap_or(0);
-            if previous_index < cg_cycle_count && n_record_chunk > 0 {
                 let records_to_read = n_record_chunk.min(cg_cycle_count - previous_index);
                 let inval_bytes = if (channel_group.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) == 0 {
                     channel_group.block.cg_inval_bytes as usize
@@ -1516,7 +1716,7 @@ fn parser_dl4_sorted<'a>(
                     0
                 };
                 vlsd_channels = read_channels_from_bytes_with_inval(
-                    &block_data[..record_length * records_to_read],
+                    &data[..record_length * records_to_read],
                     &mut channel_group.cn,
                     record_length,
                     previous_index,
@@ -1524,43 +1724,18 @@ fn parser_dl4_sorted<'a>(
                     inval_bytes,
                 )
                 .context("could not read channels from bytes")?;
+                let remaining = block_length % record_length;
+                if remaining > 0 {
+                    data.copy_within(record_length * n_record_chunk.., 0);
+                    data.truncate(remaining);
+                } else {
+                    data.clear();
+                }
                 previous_index += records_to_read;
             }
-            let remaining = block_length % record_length;
-            if remaining > 0 {
-                data.extend_from_slice(&block_data[record_length * n_record_chunk..]);
-            }
-        } else {
-            data.extend_from_slice(&block_data);
-            // Use data.len() so a partial-record tail from the previous block is included.
-            let block_length = data.len();
-            let n_record_chunk = block_length.checked_div(record_length).unwrap_or(0);
-            if previous_index >= cg_cycle_count || n_record_chunk == 0 {
-                continue;
-            }
-            let records_to_read = n_record_chunk.min(cg_cycle_count - previous_index);
-            let inval_bytes = if (channel_group.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) == 0 {
-                channel_group.block.cg_inval_bytes as usize
-            } else {
-                0
-            };
-            vlsd_channels = read_channels_from_bytes_with_inval(
-                &data[..record_length * records_to_read],
-                &mut channel_group.cn,
-                record_length,
-                previous_index,
-                inval_bytes > 0,
-                inval_bytes,
-            )
-            .context("could not read channels from bytes")?;
-            let remaining = block_length % record_length;
-            if remaining > 0 {
-                data.copy_within(record_length * n_record_chunk.., 0);
-                data.truncate(remaining);
-            } else {
-                data.clear();
-            }
-            previous_index += records_to_read;
+        }
+        for s in advise_slices {
+            rdr.advise_dontneed_slice(s);
         }
     }
     Ok((position, vlsd_channels))
@@ -1601,11 +1776,7 @@ fn parser_dl4_unsorted<'a>(
         }
     }
 
-    // Phase 2: Parallel decompression
-    let decompressed =
-        decompress_raw_blocks(raw_entries, "failed decompressing DZ block in DL4 unsorted")?;
-
-    // Phase 3: Sequential record dispatch
+    // Phase 2 & 3: Bounded-batch parallel decompression + sequential record dispatch
     let mut data: Vec<u8> = Vec::new();
     let mut decoder: Dec = Dec {
         windows_1252: WINDOWS_1252.new_decoder(),
@@ -1613,15 +1784,25 @@ fn parser_dl4_unsorted<'a>(
         utf_16_le: UTF_16LE.new_decoder(),
     };
     let mut unsorted_state = UnsortedState::new(dg);
-    for block_data in decompressed {
-        if data.is_empty() {
-            let consumed = unsorted_state.process_slice(&block_data, dg, &mut decoder)?;
-            if consumed < block_data.len() {
-                data.extend_from_slice(&block_data[consumed..]);
+    let mut raw_iter = raw_entries.into_iter().peekable();
+    while raw_iter.peek().is_some() {
+        let batch = take_raw_batch(&mut raw_iter, raw_block_est_len);
+        let advise_slices: Vec<&'a [u8]> = batch.iter().map(raw_block_slice).collect();
+        let decompressed =
+            decompress_raw_blocks(batch, "failed decompressing DZ block in DL4 unsorted")?;
+        for block_data in decompressed {
+            if data.is_empty() {
+                let consumed = unsorted_state.process_slice(&block_data, dg, &mut decoder)?;
+                if consumed < block_data.len() {
+                    data.extend_from_slice(&block_data[consumed..]);
+                }
+            } else {
+                data.extend_from_slice(&block_data);
+                unsorted_state.process_chunk(&mut data, dg, &mut decoder)?;
             }
-        } else {
-            data.extend_from_slice(&block_data);
-            unsorted_state.process_chunk(&mut data, dg, &mut decoder)?;
+        }
+        for s in advise_slices {
+            rdr.advise_dontneed_slice(s);
         }
     }
     Ok(position)
@@ -1675,6 +1856,7 @@ fn read_all_channels_sorted(
         )
         .context("could not read channels from bytes")?;
         previous_index += n_record_chunk;
+        rdr.advise_dontneed_slice(data_chunk);
     }
     Ok(vlsd_channels)
 }
@@ -1731,6 +1913,7 @@ fn read_all_channels_unsorted(
         utf_16_le: UTF_16LE.new_decoder(),
     };
     unsorted_state.process_slice(data, dg, &mut decoder)?;
+    rdr.advise_dontneed_slice(data);
     Ok(())
 }
 
@@ -1913,16 +2096,17 @@ fn read_all_channels_unsorted_from_slice(
                                         if *nrecord == 0 && target_cn.block.cn_type == 7 {
                                             match target_cn.block.cn_data_type {
                                                 6..=9 | 17 => {
-                                                    target_cn.builder = Some(ChannelBuilder::Utf8(
-                                                        arrow::array::LargeStringBuilder::new(),
-                                                    ));
+                                                    target_cn.builder =
+                                                        Some(Box::new(ChannelBuilder::Utf8(
+                                                            arrow::array::LargeStringBuilder::new(),
+                                                        )));
                                                 }
                                                 10 => {
-                                                    target_cn.builder = Some(
+                                                    target_cn.builder = Some(Box::new(
                                                         ChannelBuilder::VariableSizeByteArray(
                                                             arrow::array::LargeBinaryBuilder::new(),
                                                         ),
-                                                    );
+                                                    ));
                                                 }
                                                 _ => {}
                                             }
@@ -1930,7 +2114,7 @@ fn read_all_channels_unsorted_from_slice(
                                         if target_cn.builder.is_none() {
                                             target_cn.init_builder(0)?;
                                         }
-                                        match target_cn.builder.as_mut().unwrap() {
+                                        match target_cn.builder.as_deref_mut().unwrap() {
                                             ChannelBuilder::Utf8(array) => {
                                                 if target_cn.block.cn_data_type == 7 {
                                                     // UTF-8: no decoding needed, use &str directly
@@ -2240,7 +2424,7 @@ pub fn apply_bit_mask_offset(dg: &mut Dg4) -> Result<(), Error> {
                                 }
                             }};
                         }
-                        if let Some(builder) = &mut cn.builder {
+                        if let Some(builder) = cn.builder.as_deref_mut() {
                             match builder {
                                 ChannelBuilder::Int8(array) => shift_slice!(array, 8),
                                 ChannelBuilder::UInt8(array) => shift_slice!(array, 8),
@@ -2510,7 +2694,7 @@ fn store_decoded_values_in_channel(
     let cn_data_type = cn.block.cn_data_type;
     let builder = cn
         .builder
-        .as_mut()
+        .as_deref_mut()
         .ok_or_else(|| anyhow::anyhow!("builder should be initialized"))?;
     for (i, value_bytes) in values.into_iter().enumerate() {
         if value_bytes.is_empty()

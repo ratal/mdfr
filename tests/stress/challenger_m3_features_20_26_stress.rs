@@ -369,7 +369,7 @@ fn test_invalidation_bits_roundtrip_uncompressed_and_deflate() -> Result<()> {
             for dg in mdf4.dg.values() {
                 for cg in dg.cg.values() {
                     for cn in cg.cn.values() {
-                        if cn.unique_name == channel_name {
+                        if *cn.unique_name == *channel_name {
                             found_cn = true;
                             // Check that cn_flags has CN_F_INVALID set
                             assert_ne!(
@@ -438,14 +438,14 @@ fn test_9byte_bitfield_u64_and_i64_decoding() -> Result<()> {
             cn_bit_count: bit_count,
             ..Default::default()
         },
-        builder: Some(ChannelBuilder::new_zeroed(
+        builder: Some(Box::new(ChannelBuilder::new_zeroed(
             0,
             0,
             test_values_u64.len(),
             8,
             (Vec::new(), Order::RowMajor),
             1,
-        )?),
+        )?)),
         ..Default::default()
     };
 
@@ -488,14 +488,14 @@ fn test_9byte_bitfield_u64_and_i64_decoding() -> Result<()> {
             cn_bit_count: bit_count,
             ..Default::default()
         },
-        builder: Some(ChannelBuilder::new_zeroed(
+        builder: Some(Box::new(ChannelBuilder::new_zeroed(
             0,
             2,
             test_values_i64.len(),
             8,
             (Vec::new(), Order::RowMajor),
             1,
-        )?),
+        )?)),
         ..Default::default()
     };
 
@@ -786,7 +786,7 @@ fn test_dz_4mib_cap_fallback_preserves_data() -> Result<()> {
         for dg in mdf4.dg.values() {
             for cg in dg.cg.values() {
                 for cn in cg.cn.values() {
-                    if cn.unique_name == ch_name {
+                    if *cn.unique_name == *ch_name {
                         let data_ptr = dg.block.dg_data;
                         assert!(data_ptr > 0, "dg_data must be non-zero");
                         file.seek(SeekFrom::Start(data_ptr as u64))?;
@@ -1138,14 +1138,14 @@ fn test_mdf3_big_endian_5_and_7_byte_integers() -> Result<()> {
         should_read: true,
         block1: Cn3Block1::default(),
         block2: block2_i40,
-        builder: Some(ChannelBuilder::new_zeroed(
+        builder: Some(Box::new(ChannelBuilder::new_zeroed(
             0,
             3, // IntBE
             test_i40.len(),
             5,
             (Vec::new(), Order::RowMajor),
             1,
-        )?),
+        )?)),
         ..Default::default()
     };
     channels_i40.insert(0u32, cn_i40);
@@ -1197,14 +1197,14 @@ fn test_mdf3_big_endian_5_and_7_byte_integers() -> Result<()> {
         should_read: true,
         block1: Cn3Block1::default(),
         block2: block2_i56,
-        builder: Some(ChannelBuilder::new_zeroed(
+        builder: Some(Box::new(ChannelBuilder::new_zeroed(
             0,
             3, // IntBE
             test_i56.len(),
             7,
             (Vec::new(), Order::RowMajor),
             1,
-        )?),
+        )?)),
         ..Default::default()
     };
     channels_i56.insert(0u32, cn_i56);
@@ -1244,14 +1244,14 @@ fn test_mdf3_big_endian_5_and_7_byte_integers() -> Result<()> {
         should_read: true,
         block1: Cn3Block1::default(),
         block2: block2_u40,
-        builder: Some(ChannelBuilder::new_zeroed(
+        builder: Some(Box::new(ChannelBuilder::new_zeroed(
             0,
             1, // UIntBE
             test_u40.len(),
             5,
             (Vec::new(), Order::RowMajor),
             1,
-        )?),
+        )?)),
         ..Default::default()
     };
     channels_u40.insert(0u32, cn_u40);

@@ -125,7 +125,7 @@ pub fn decompress_dz_data(
     org_data_length: u64,
 ) -> Result<Vec<u8>> {
     let mut data = match zip_type {
-        0 | 1 => decompress_deflate(buf)?,
+        0 | 1 => decompress_deflate(buf, org_data_length as usize)?,
         2 | 3 => decompress_zstd(buf)?,
         4 | 5 => decompress_lz4_frame(buf, org_data_length as usize)?,
         254 => {
@@ -147,7 +147,43 @@ pub fn decompress_dz_data(
 }
 
 #[cfg(feature = "deflate")]
-fn decompress_deflate(input: &[u8]) -> Result<Vec<u8>> {
+fn decompress_deflate_with_flags(
+    input: &[u8],
+    org_data_length: usize,
+    flags: u32,
+) -> Option<Vec<u8>> {
+    use miniz_oxide::inflate::TINFLStatus;
+    use miniz_oxide::inflate::core::{DecompressorOxide, decompress};
+
+    let mut out = vec![0u8; org_data_length];
+    let mut decomp = alloc::boxed::Box::new(DecompressorOxide::new());
+    let (status, _in_bytes, out_bytes) = decompress(&mut decomp, input, &mut out, 0, flags);
+    if status == TINFLStatus::Done {
+        out.truncate(out_bytes);
+        Some(out)
+    } else {
+        None
+    }
+}
+
+#[cfg(feature = "deflate")]
+fn decompress_deflate(input: &[u8], org_data_length: usize) -> Result<Vec<u8>> {
+    if org_data_length > 0 {
+        use miniz_oxide::inflate::core::inflate_flags::{
+            TINFL_FLAG_PARSE_ZLIB_HEADER, TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF,
+        };
+        let zlib_flags = TINFL_FLAG_PARSE_ZLIB_HEADER | TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF;
+        if let Some(out) = decompress_deflate_with_flags(input, org_data_length, zlib_flags) {
+            return Ok(out);
+        }
+        if let Some(out) = decompress_deflate_with_flags(
+            input,
+            org_data_length,
+            TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF,
+        ) {
+            return Ok(out);
+        }
+    }
     miniz_oxide::inflate::decompress_to_vec_zlib(input)
         .or_else(|_| miniz_oxide::inflate::decompress_to_vec(input))
         .or_else(|err| {
@@ -165,7 +201,7 @@ fn decompress_deflate(input: &[u8]) -> Result<Vec<u8>> {
 }
 
 #[cfg(not(feature = "deflate"))]
-fn decompress_deflate(_input: &[u8]) -> Result<Vec<u8>> {
+fn decompress_deflate(_input: &[u8], _org_data_length: usize) -> Result<Vec<u8>> {
     Err(Error::Unsupported("deflate feature not enabled"))
 }
 

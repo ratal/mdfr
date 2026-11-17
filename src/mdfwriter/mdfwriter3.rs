@@ -45,12 +45,12 @@ fn add_cn3_to_mdf4(
         shape: (shape_vec, order),
     };
     let master_signature = MasterSignature {
-        master_channel: cg.master_channel_name.clone(),
+        master_channel: cg.master_channel_name.as_deref().map(str::to_string),
         master_type: Some(u8::from(master_flag)),
         master_flag,
     };
     mdf4.add_channel(
-        cn.unique_name.clone(),
+        cn.unique_name.to_string(),
         converted_data,
         data_signature,
         master_signature,
@@ -75,7 +75,7 @@ pub fn convert3to4(mdf3: &MdfInfo3, file_name: &str) -> Result<MdfInfo4, Error> 
                     // First add master channel
                     if let Some(master_channel_name) = &cg.master_channel_name
                         && let Some((_master_channel, _dg_pos, (_cg_pos, _rec_id), cn_pos)) =
-                            mdf3.channel_names_set.get(master_channel_name)
+                            mdf3.channel_names_set.get(master_channel_name.as_ref())
                         && let Some(cn) = cg.cn.get(cn_pos)
                     {
                         add_cn3_to_mdf4(mdf3, &mut mdf4, cg, cn, true)
@@ -85,7 +85,7 @@ pub fn convert3to4(mdf3: &MdfInfo3, file_name: &str) -> Result<MdfInfo4, Error> 
                     cg.cn
                         .iter()
                         .filter(|(_rec_pos, cn)| {
-                            Some(&cn.unique_name) != cg.master_channel_name.as_ref()
+                            cg.master_channel_name.as_deref() != Some(cn.unique_name.as_ref())
                         })
                         .try_for_each(|(_rec_pos, cn): (&u32, &Cn3)| -> Result<(), Error> {
                             add_cn3_to_mdf4(mdf3, &mut mdf4, cg, cn, false)

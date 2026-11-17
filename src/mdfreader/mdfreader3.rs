@@ -6,6 +6,7 @@ use crate::mdfinfo::mdfinfo3::{Cg3, Cn3, Dg3};
 use crate::mdfinfo::sym_buf_reader::SliceCursor;
 use anyhow::{Context, Error, Result};
 use std::collections::{HashMap, HashSet};
+use std::io::Seek;
 
 use crate::data_holder::channel_builder::ChannelBuilder;
 use crate::mdfreader::data_read3::read_channels_from_bytes;
@@ -19,9 +20,9 @@ pub const CHUNK_SIZE_READING_3: usize = 524288; // can be tuned according to arc
 
 /// Reads the file data based on headers information contained in info parameter
 /// Hashset of channel names parameter allows to filter which channels to read
-pub fn mdfreader3<'a>(
-    rdr: &'a mut SliceCursor<'a>,
-    mdf: &'a mut Mdf,
+pub fn mdfreader3(
+    rdr: &mut SliceCursor<'_>,
+    mdf: &mut Mdf,
     channel_names: &HashSet<String>,
 ) -> Result<(), Error> {
     match &mut mdf.mdf_info {
@@ -30,7 +31,7 @@ pub fn mdfreader3<'a>(
             for dg in info.dg.values_mut() {
                 for cg in dg.cg.values_mut() {
                     for cn in cg.cn.values_mut() {
-                        cn.should_read = channel_names.contains(&cn.unique_name);
+                        cn.should_read = channel_names.contains(&*cn.unique_name);
                     }
                 }
             }
@@ -128,6 +129,8 @@ fn read_all_channels_sorted(
         .context("failed initialising arrays for sorted channels")?;
     // read by chunks directly from mapped slice and store in channel array
     let mut previous_index: usize = 0;
+    let mut chunk_start_pos: usize = rdr.stream_position().unwrap_or(0) as usize;
+    let mut advised_bytes: usize = 0;
     for (n_record_chunk, chunk_size) in chunks {
         let data_chunk = rdr
             .read_slice(chunk_size)
@@ -140,6 +143,15 @@ fn read_all_channels_sorted(
         )
         .context("failed reading channels from bytes")?;
         previous_index += n_record_chunk;
+        advised_bytes += chunk_size;
+        if advised_bytes >= 4 * 1024 * 1024 {
+            rdr.advise_dontneed_range(chunk_start_pos, advised_bytes);
+            chunk_start_pos += advised_bytes;
+            advised_bytes = 0;
+        }
+    }
+    if advised_bytes >= 1_048_576 {
+        rdr.advise_dontneed_range(chunk_start_pos, advised_bytes);
     }
     apply_bit_mask_offset_3(&mut channel_group.cn)?;
     for cn in channel_group.cn.values_mut() {
@@ -196,6 +208,7 @@ fn read_all_channels_unsorted(
             }
         }
     }
+    rdr.advise_dontneed_slice(data);
     Ok(())
 }
 
@@ -288,7 +301,7 @@ pub fn apply_bit_mask_offset_3(channels: &mut HashMap<u32, Cn3>) -> Result<(), E
                         }
                     }};
                 }
-                if let Some(builder) = &mut cn.builder {
+                if let Some(builder) = cn.builder.as_deref_mut() {
                     match builder {
                         ChannelBuilder::Int8(a) => shift_slice!(a, 8),
                         ChannelBuilder::UInt8(a) => shift_slice!(a, 8),

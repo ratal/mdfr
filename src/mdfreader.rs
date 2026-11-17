@@ -398,12 +398,8 @@ impl Mdf {
         self.mdf_info.get_master_channel_names_set()
     }
     /// returns an iterator over all channel names (zero-copy)
-    pub fn channel_names(&self) -> impl Iterator<Item = &String> {
+    pub fn channel_names(&self) -> impl Iterator<Item = &str> {
         self.mdf_info.channel_names()
-    }
-    /// returns a reference to the channel names in the same channel group (zero-copy)
-    pub fn channel_names_cg_set_ref(&self, channel_name: &str) -> Option<&HashSet<String>> {
-        self.mdf_info.channel_names_cg_set_ref(channel_name)
     }
     /// Eagerly converts all channels to physical values.
     pub fn convert_all_channels(&mut self) -> Result<(), Error> {
@@ -541,14 +537,24 @@ impl Mdf {
         let file_name = self.get_file_name();
         let mapped = MappedFile::open(&file_name)
             .with_context(|| format!("Cannot find the file {file_name}"))?;
+        mapped.advise_sequential();
         info!("Opened file {file_name}");
 
-        self.load_channels_data_from_bytes(&mapped, channel_names)
+        let mut rdr = SliceCursor::from_mapped(&mapped);
+        self.load_channels_data_from_cursor(&mut rdr, channel_names)
     }
     /// load a set of channels data in memory from a byte slice
     pub fn load_channels_data_from_bytes(
         &mut self,
         bytes: &[u8],
+        channel_names: HashSet<String>,
+    ) -> Result<(), Error> {
+        let mut rdr = SliceCursor::new(bytes);
+        self.load_channels_data_from_cursor(&mut rdr, channel_names)
+    }
+    fn load_channels_data_from_cursor(
+        &mut self,
+        rdr: &mut SliceCursor<'_>,
         channel_names: HashSet<String>,
     ) -> Result<(), Error> {
         // If all requested channels already have in-memory data, skip decoding
@@ -561,11 +567,9 @@ impl Mdf {
             return Ok(());
         }
 
-        let mut rdr = SliceCursor::new(bytes);
-
         match &mut self.mdf_info {
             MdfInfo::V3(_mdfinfo3) => {
-                mdfreader3(&mut rdr, self, &channel_names).with_context(|| {
+                mdfreader3(rdr, self, &channel_names).with_context(|| {
                     format!(
                         "failed reading data from mdf3 file {}",
                         self.get_file_name()
@@ -573,7 +577,7 @@ impl Mdf {
                 })?;
             }
             MdfInfo::V4(_mdfinfo4) => {
-                mdfreader4(&mut rdr, self, &channel_names).with_context(|| {
+                mdfreader4(rdr, self, &channel_names).with_context(|| {
                     format!(
                         "failed reading data from mdf4 file {}",
                         self.get_file_name()
@@ -1001,7 +1005,8 @@ impl fmt::Display for Mdf {
                         } else {
                             writeln!(f, "\nWithout Master channel")?;
                         }
-                        for channel in &cg.channel_names {
+                        for cn in cg.cn.values() {
+                            let channel = &*cn.unique_name;
                             writeln!(f, " {channel} ")?;
                             if let Some(data) = self.get_channel_converted_data(channel)
                                 && !data.is_empty()
@@ -1043,7 +1048,8 @@ impl fmt::Display for Mdf {
                         } else {
                             writeln!(f, "\nWithout Master channel")?;
                         }
-                        for channel in &cg.channel_names {
+                        for cn in cg.cn.values() {
+                            let channel = &*cn.unique_name;
                             writeln!(f, " {channel} ")?;
                             if let Some(data) = self.get_channel_converted_data(channel)
                                 && !data.is_empty()

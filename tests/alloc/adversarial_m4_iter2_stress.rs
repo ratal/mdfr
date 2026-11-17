@@ -360,10 +360,11 @@ fn test_stress_o1_queries_50000_channels() {
     let mut info4 = MdfInfo4::default();
 
     // Populate 50,000 channels
+    let master_arc: std::sync::Arc<str> = std::sync::Arc::from("TimeMaster");
     for i in 0..n_channels {
         info4.channel_names_set.insert(
-            format!("Channel_Signal_Prefix_{:06}", i),
-            (Some("TimeMaster".to_string()), 0, (0, 0), (0, i as i64)),
+            std::sync::Arc::from(format!("Channel_Signal_Prefix_{:06}", i)),
+            (Some(master_arc.clone()), 0, (0, 0), (0, i as i64)),
         );
     }
 
@@ -413,21 +414,21 @@ fn test_stress_o1_queries_50000_channels() {
 
     // Edge-case channel names
     info4.channel_names_set.insert(
-        "".to_string(),
-        (Some("TimeMaster".to_string()), 0, (0, 0), (0, 0)),
+        std::sync::Arc::from(""),
+        (Some(master_arc.clone()), 0, (0, 0), (0, 0)),
     );
     assert!(info4.contains_channel(""));
 
     info4.channel_names_set.insert(
-        "Temperature_°C_日本語".to_string(),
-        (Some("TimeMaster".to_string()), 0, (0, 0), (0, 1)),
+        std::sync::Arc::from("Temperature_°C_日本語"),
+        (Some(master_arc.clone()), 0, (0, 0), (0, 1)),
     );
     assert!(info4.contains_channel("Temperature_°C_日本語"));
 
     let long_name = "x".repeat(1000);
     info4.channel_names_set.insert(
-        long_name.clone(),
-        (Some("TimeMaster".to_string()), 0, (0, 0), (0, 2)),
+        std::sync::Arc::from(long_name.as_str()),
+        (Some(master_arc), 0, (0, 0), (0, 2)),
     );
     assert!(info4.contains_channel(&long_name));
 }

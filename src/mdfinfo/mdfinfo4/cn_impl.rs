@@ -23,6 +23,123 @@ pub use mdfr_core::blocks::cn::*;
 
 /// Cn4 structure containing block but also unique_name, ndarray data, composition
 /// and other attributes frequently needed and computed
+/// Lazy invalidation mask state stored on `Cn4`.
+///
+/// Holds metadata (`Pending`) with zero heap allocation during header parsing and finalization,
+/// materializing the `BooleanBufferBuilder` only when channel data is actually read.
+#[derive(Debug)]
+pub enum InvalidMaskState {
+    Pending {
+        byte_pos: usize,
+        byte_mask: u8,
+        default_valid: bool,
+        cycles: usize,
+    },
+    Builder {
+        builder: Box<BooleanBufferBuilder>,
+        byte_pos: usize,
+        byte_mask: u8,
+    },
+}
+
+impl Clone for InvalidMaskState {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Pending {
+                byte_pos,
+                byte_mask,
+                default_valid,
+                cycles,
+            } => Self::Pending {
+                byte_pos: *byte_pos,
+                byte_mask: *byte_mask,
+                default_valid: *default_valid,
+                cycles: *cycles,
+            },
+            Self::Builder {
+                builder,
+                byte_pos,
+                byte_mask,
+            } => {
+                let mut cloned = BooleanBufferBuilder::new(builder.len());
+                cloned.append_buffer(&builder.finish_cloned());
+                Self::Builder {
+                    builder: Box::new(cloned),
+                    byte_pos: *byte_pos,
+                    byte_mask: *byte_mask,
+                }
+            }
+        }
+    }
+}
+
+impl InvalidMaskState {
+    /// Returns `(byte_pos, byte_mask)`.
+    pub fn byte_pos_and_mask(&self) -> (usize, u8) {
+        match self {
+            Self::Pending {
+                byte_pos,
+                byte_mask,
+                ..
+            } => (*byte_pos, *byte_mask),
+            Self::Builder {
+                byte_pos,
+                byte_mask,
+                ..
+            } => (*byte_pos, *byte_mask),
+        }
+    }
+
+    /// Ensures the `BooleanBufferBuilder` is allocated and prefilled, returning
+    /// `(&mut BooleanBufferBuilder, byte_pos, byte_mask)`.
+    pub fn materialize_mut(
+        &mut self,
+        fallback_cycles: usize,
+    ) -> (&mut BooleanBufferBuilder, usize, u8) {
+        if let Self::Pending {
+            byte_pos,
+            byte_mask,
+            default_valid,
+            cycles,
+        } = *self
+        {
+            let n = if cycles > 0 { cycles } else { fallback_cycles };
+            let mut builder = BooleanBufferBuilder::new(n);
+            builder.append_n(n, default_valid);
+            *self = Self::Builder {
+                builder: Box::new(builder),
+                byte_pos,
+                byte_mask,
+            };
+        }
+        match self {
+            Self::Builder {
+                builder,
+                byte_pos,
+                byte_mask,
+            } => (builder.as_mut(), *byte_pos, *byte_mask),
+            Self::Pending { .. } => unreachable!(),
+        }
+    }
+
+    /// Drops any materialized builder buffer while preserving invalid bit metadata.
+    pub fn clear_builder(&mut self) {
+        if let Self::Builder {
+            byte_pos,
+            byte_mask,
+            ..
+        } = *self
+        {
+            *self = Self::Pending {
+                byte_pos,
+                byte_mask,
+                default_valid: byte_mask != 0,
+                cycles: 0,
+            };
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 #[repr(C)]
 pub struct Cn4 {
@@ -31,7 +148,7 @@ pub struct Cn4 {
     /// CN Block without short header
     pub block: Cn4Block,
     /// unique channel name string
-    pub unique_name: String,
+    pub unique_name: std::sync::Arc<str>,
     /// absolute file position of this CN block
     pub block_position: i64,
     /// beginning position of channel in record
@@ -39,7 +156,7 @@ pub struct Cn4 {
     /// number of bytes taken by channel in record
     pub n_bytes: u32,
     /// optional composition (CA array, nested CN structure, DS/CL/CV/CU VLSD layout)
-    pub composition: Option<Composition>,
+    pub composition: Option<Box<Composition>>,
     /// channel data
     pub data: ChannelData,
     /// flag to track if channel's data is already converted or to be converted
@@ -50,29 +167,20 @@ pub struct Cn4 {
     pub list_size: usize,
     /// shape of array data: (dimension sizes, storage order); scalar channels use an empty vec
     pub shape: (Vec<usize>, Order),
-    /// optional invalid mask array, invalid byte position in record, invalid byte mask
-    pub invalid_mask: Option<(Option<BooleanBufferBuilder>, usize, u8)>,
+    /// optional invalid mask state, invalid byte position in record, invalid byte mask
+    pub invalid_mask: Option<InvalidMaskState>,
     /// Template EVBLOCK for event signal channels (cn_flags bit 13 set)
     /// This describes the structure of event data stored in the channel
-    pub event_template: Option<Ev4Block>,
+    pub event_template: Option<Box<Ev4Block>>,
     /// flag set during data read to indicate this channel is in the read set
     pub should_read: bool,
     /// Optional mutable staging builder used while decoding data blocks
-    pub builder: Option<crate::data_holder::channel_builder::ChannelBuilder>,
+    pub builder: Option<Box<crate::data_holder::channel_builder::ChannelBuilder>>,
 }
 
 impl Clone for Cn4 {
     fn clone(&self) -> Self {
-        let mut invalid_mask: Option<(Option<BooleanBufferBuilder>, usize, u8)> = None;
-        if let Some((boolean_buffer, byte_position, byte_mask)) = &self.invalid_mask {
-            let mut boolean_buffer_builder: Option<BooleanBufferBuilder> = None;
-            if let Some(buffer) = boolean_buffer {
-                let mut new_boolean_buffer_builder = BooleanBufferBuilder::new(buffer.len());
-                new_boolean_buffer_builder.append_buffer(&buffer.finish_cloned());
-                boolean_buffer_builder = Some(new_boolean_buffer_builder);
-            }
-            invalid_mask = Some((boolean_buffer_builder, *byte_position, *byte_mask));
-        }
+        let invalid_mask = self.invalid_mask.clone();
         Self {
             header: self.header,
             block: self.block.clone(),
@@ -276,7 +384,7 @@ fn can_open_date(
     let date_ms = Cn4 {
         header: default_short_header(BlockType::CN),
         block,
-        unique_name: prefixed_subchannel_name(parent_name, "ms"),
+        unique_name: std::sync::Arc::from(prefixed_subchannel_name(parent_name, "ms")),
         block_position,
         pos_byte_beg,
         n_bytes: 2,
@@ -286,7 +394,7 @@ fn can_open_date(
         is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
-        shape: (vec![1], Order::RowMajor),
+        shape: (Vec::new(), Order::RowMajor),
         invalid_mask: None,
         event_template: None,
         should_read: false,
@@ -300,7 +408,7 @@ fn can_open_date(
     let min = Cn4 {
         header: default_short_header(BlockType::CN),
         block,
-        unique_name: prefixed_subchannel_name(parent_name, "min"),
+        unique_name: std::sync::Arc::from(prefixed_subchannel_name(parent_name, "min")),
         block_position,
         pos_byte_beg: pos_byte_beg + 2,
         n_bytes: 1,
@@ -310,7 +418,7 @@ fn can_open_date(
         is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
-        shape: (vec![1], Order::RowMajor),
+        shape: (Vec::new(), Order::RowMajor),
         invalid_mask: None,
         event_template: None,
         should_read: false,
@@ -324,7 +432,7 @@ fn can_open_date(
     let hour = Cn4 {
         header: default_short_header(BlockType::CN),
         block,
-        unique_name: prefixed_subchannel_name(parent_name, "hour"),
+        unique_name: std::sync::Arc::from(prefixed_subchannel_name(parent_name, "hour")),
         block_position,
         pos_byte_beg: pos_byte_beg + 3,
         n_bytes: 1,
@@ -334,7 +442,7 @@ fn can_open_date(
         is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
-        shape: (vec![1], Order::RowMajor),
+        shape: (Vec::new(), Order::RowMajor),
         invalid_mask: None,
         event_template: None,
         should_read: false,
@@ -348,7 +456,7 @@ fn can_open_date(
     let day = Cn4 {
         header: default_short_header(BlockType::CN),
         block,
-        unique_name: prefixed_subchannel_name(parent_name, "day"),
+        unique_name: std::sync::Arc::from(prefixed_subchannel_name(parent_name, "day")),
         block_position,
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 1,
@@ -358,7 +466,7 @@ fn can_open_date(
         is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
-        shape: (vec![1], Order::RowMajor),
+        shape: (Vec::new(), Order::RowMajor),
         invalid_mask: None,
         event_template: None,
         should_read: false,
@@ -372,7 +480,7 @@ fn can_open_date(
     let month = Cn4 {
         header: default_short_header(BlockType::CN),
         block,
-        unique_name: prefixed_subchannel_name(parent_name, "month"),
+        unique_name: std::sync::Arc::from(prefixed_subchannel_name(parent_name, "month")),
         block_position,
         pos_byte_beg: pos_byte_beg + 5,
         n_bytes: 1,
@@ -382,7 +490,7 @@ fn can_open_date(
         is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
-        shape: (vec![1], Order::RowMajor),
+        shape: (Vec::new(), Order::RowMajor),
         invalid_mask: None,
         event_template: None,
         should_read: false,
@@ -396,7 +504,7 @@ fn can_open_date(
     let year = Cn4 {
         header: default_short_header(BlockType::CN),
         block,
-        unique_name: prefixed_subchannel_name(parent_name, "year"),
+        unique_name: std::sync::Arc::from(prefixed_subchannel_name(parent_name, "year")),
         block_position,
         pos_byte_beg: pos_byte_beg + 6,
         n_bytes: 1,
@@ -406,7 +514,7 @@ fn can_open_date(
         is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
-        shape: (vec![1], Order::RowMajor),
+        shape: (Vec::new(), Order::RowMajor),
         invalid_mask: None,
         event_template: None,
         should_read: false,
@@ -430,7 +538,7 @@ fn can_open_time(
     let ms: Cn4 = Cn4 {
         header: default_short_header(BlockType::CN),
         block,
-        unique_name: prefixed_subchannel_name(parent_name, "ms"),
+        unique_name: std::sync::Arc::from(prefixed_subchannel_name(parent_name, "ms")),
         block_position,
         pos_byte_beg,
         n_bytes: 4,
@@ -440,7 +548,7 @@ fn can_open_time(
         is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
-        shape: (vec![1], Order::RowMajor),
+        shape: (Vec::new(), Order::RowMajor),
         invalid_mask: None,
         event_template: None,
         should_read: false,
@@ -454,7 +562,7 @@ fn can_open_time(
     let days: Cn4 = Cn4 {
         header: default_short_header(BlockType::CN),
         block,
-        unique_name: prefixed_subchannel_name(parent_name, "day"),
+        unique_name: std::sync::Arc::from(prefixed_subchannel_name(parent_name, "day")),
         block_position,
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 2,
@@ -464,7 +572,7 @@ fn can_open_time(
         is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
-        shape: (vec![1], Order::RowMajor),
+        shape: (Vec::new(), Order::RowMajor),
         invalid_mask: None,
         event_template: None,
         should_read: false,
@@ -472,22 +580,28 @@ fn can_open_time(
     (ms, days)
 }
 
-/// Builds the invalidation validity bitmap mask for a channel given `cg_inval_bytes` and `cycles`.
+/// Builds the lazy invalidation validity bitmap state for a channel given `cg_inval_bytes` and `cycles`.
 pub(crate) fn build_invalid_mask(
     block: &Cn4Block,
     cg_inval_bytes: u32,
     cycles: usize,
-) -> Option<(Option<BooleanBufferBuilder>, usize, u8)> {
+) -> Option<InvalidMaskState> {
     if (block.cn_flags & CN_F_ALL_VALUES_INVALID) != 0 {
-        let mut buffer = BooleanBufferBuilder::new(cycles);
-        buffer.append_n(cycles, false);
-        Some((Some(buffer), 0, 0))
+        Some(InvalidMaskState::Pending {
+            byte_pos: 0,
+            byte_mask: 0,
+            default_valid: false,
+            cycles,
+        })
     } else if cg_inval_bytes != 0 && (block.cn_flags & CN_F_INVALID) != 0 {
         let invalid_byte_position = (block.cn_inval_bit_pos >> 3) as usize;
         let invalid_byte_mask = 1 << (block.cn_inval_bit_pos & 0x07);
-        let mut buffer = BooleanBufferBuilder::new(cycles);
-        buffer.append_n(cycles, true);
-        Some((Some(buffer), invalid_byte_position, invalid_byte_mask))
+        Some(InvalidMaskState::Pending {
+            byte_pos: invalid_byte_position,
+            byte_mask: invalid_byte_mask,
+            default_valid: true,
+            cycles,
+        })
     } else {
         None
     }
@@ -541,7 +655,7 @@ impl Cn4 {
         if !self.is_event_signal() {
             return None;
         }
-        let template = self.event_template.as_ref()?;
+        let template = self.event_template.as_deref()?;
         let record_size = self.n_bytes as usize;
         if record_size == 0 || data_bytes.is_empty() {
             return None;
@@ -626,7 +740,7 @@ impl Cn4 {
     /// Returns a reference to the template EVBLOCK if this is an event signal channel.
     /// The template EVBLOCK describes the structure of event data stored in this channel.
     pub fn get_event_template(&self) -> Option<&Ev4Block> {
-        self.event_template.as_ref()
+        self.event_template.as_deref()
     }
 
     /// Returns a reference to the template EVBLOCK if this is an event signal channel.
@@ -643,7 +757,7 @@ impl Cn4 {
 
     /// Initializes builder for mutable record accumulation during file reading
     pub fn init_builder(&mut self, cycle_count: usize) -> Result<(), Error> {
-        self.builder = Some(
+        self.builder = Some(Box::new(
             crate::data_holder::channel_builder::ChannelBuilder::new_zeroed(
                 self.block.cn_type,
                 self.block.cn_data_type,
@@ -652,7 +766,7 @@ impl Cn4 {
                 self.shape.clone(),
                 self.list_size,
             )?,
-        );
+        ));
         Ok(())
     }
 
@@ -705,7 +819,7 @@ pub(super) fn parse_cn4_block(
 
     let pos_byte_beg = block.cn_byte_offset + record_id_size as u32;
     let n_bytes = calc_n_bytes_not_aligned(block.cn_bit_count + (block.cn_bit_offset as u32));
-    let invalid_mask: Option<(Option<BooleanBufferBuilder>, usize, u8)> =
+    let invalid_mask: Option<InvalidMaskState> =
         build_invalid_mask(&block, cg_inval_bytes, cg_cycle_count as usize);
 
     // Reads TX name
@@ -823,7 +937,7 @@ pub(super) fn parse_cn4_block(
     // Read template EVBLOCK for event signal channels (cn_flags bit 13 set)
     // For event signal channels, cn_data points to a template EVBLOCK that describes
     // the structure of event data stored in this channel
-    let event_template: Option<Ev4Block> = if (block.cn_flags & CN_F_EVENT_SIGNAL) != 0
+    let event_template: Option<Box<Ev4Block>> = if (block.cn_flags & CN_F_EVENT_SIGNAL) != 0
         && block.cn_data > 0
         && block.cn_type != 1
         && block.cn_type != 5
@@ -838,18 +952,18 @@ pub(super) fn parse_cn4_block(
             position,
             BlockType::EV,
         )?;
-        Some(ev_block)
+        Some(Box::new(ev_block))
     } else {
         None
     };
 
     let cn_struct = Cn4 {
         header: cnheader,
-        unique_name: name,
+        unique_name: std::sync::Arc::from(name),
         block_position: target,
         pos_byte_beg,
         n_bytes,
-        composition: compo,
+        composition: compo.map(Box::new),
         data: data_type_init(cn_type, data_type, n_bytes, list_size, block.cn_flags)?,
         builder: None,
         is_converted: false,
@@ -988,7 +1102,7 @@ mod tests {
     #[test]
     fn test_cn4_display() {
         let cn4 = Cn4 {
-            unique_name: "speed".to_string(),
+            unique_name: std::sync::Arc::from("speed"),
             pos_byte_beg: 16,
             n_bytes: 8,
             block: Cn4Block {

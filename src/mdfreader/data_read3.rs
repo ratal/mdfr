@@ -33,7 +33,7 @@ pub fn read_channels_from_bytes(
                     record_length
                 );
             }
-            let builder = match &mut cn.builder {
+            let builder = match cn.builder.as_deref_mut() {
                 Some(b) => b,
                 None => return Ok(()),
             };

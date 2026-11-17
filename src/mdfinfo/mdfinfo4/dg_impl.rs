@@ -163,7 +163,6 @@ mod tests {
     use super::super::metadata::BlockType;
     use super::*;
     use crate::mdfinfo::mdfinfo4::CnType;
-    use std::collections::HashSet;
 
     #[test]
     fn test_dg_block_display() {
@@ -203,7 +202,6 @@ mod tests {
             block: Cg4Block::default(),
             cn: cn1,
             master_channel_name: None,
-            channel_names: HashSet::new(),
             record_length: 24,
             block_position: 100,
             vlsd_cg: None,
@@ -220,7 +218,6 @@ mod tests {
             block: Cg4Block::default(),
             cn: cn2,
             master_channel_name: None,
-            channel_names: HashSet::new(),
             record_length: 16,
             block_position: 200,
             vlsd_cg: None,

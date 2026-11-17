@@ -9,7 +9,7 @@
 //!   using rayon for parallel compression.
 use rustc_hash::FxHashMap;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fs::OpenOptions,
     io::{BufWriter, Cursor, Seek, SeekFrom, Write},
     ops::Deref,
@@ -40,6 +40,7 @@ use binrw::BinWriterExt;
 use crossbeam_channel::bounded;
 use parking_lot::Mutex;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use std::borrow::Cow;
 use std::fs::File;
 
 enum SourceInfo<'a> {
@@ -82,8 +83,10 @@ pub fn mdfwriter4(
     file_name: &str,
     compression: CompressionAlgorithm,
 ) -> Result<Mdf> {
-    mdf.convert_all_channels()
-        .context("failed converting channels before writing")?;
+    if matches!(mdf.mdf_info, MdfInfo::V3(_)) {
+        mdf.convert_all_channels()
+            .context("failed converting channels before writing")?;
+    }
     let info: SourceInfo<'_> = match &mdf.mdf_info {
         MdfInfo::V3(mdfinfo3) => SourceInfo::Owned(Box::new(
             convert3to4(mdfinfo3, file_name)
@@ -344,10 +347,14 @@ pub fn mdfwriter4(
             let mut cg_cg_master: i64 = 0;
 
             if let Some(master_channel_name) = &cg.master_channel_name {
-                if let Some(&master_pos) = master_cg_map.get(master_channel_name) {
+                if let Some(&master_pos) = master_cg_map.get(master_channel_name.as_ref()) {
                     // Master channel was already written; reuse its CG block pointer
                     cg_cg_master = master_pos;
-                } else if cg.channel_names.contains(master_channel_name) {
+                } else if cg
+                    .cn
+                    .values()
+                    .any(|cn| &cn.unique_name == master_channel_name)
+                {
                     // This CG contains the master channel; locate it by unique_name in cg.cn
                     if let Some(cn_master) = cg
                         .cn
@@ -355,7 +362,7 @@ pub fn mdfwriter4(
                         .find(|cn| &cn.unique_name == master_channel_name)
                     {
                         cg_cg_master = pointer + 64; // after DGBlock
-                        master_cg_map.insert(master_channel_name.clone(), cg_cg_master);
+                        master_cg_map.insert(master_channel_name.to_string(), cg_cg_master);
                         last_dg_pointer = pointer;
                         pointer = create_blocks(
                             &mut new_info,
@@ -363,7 +370,6 @@ pub fn mdfwriter4(
                             pointer,
                             cg,
                             cn_master,
-                            &cn_master.data,
                             &cg_cg_master,
                             true,
                             &si_position_map,
@@ -377,7 +383,7 @@ pub fn mdfwriter4(
                 {
                     // Remote master channel not yet written; resolve from its owning DG/CG
                     cg_cg_master = pointer + 64; // after DGBlock
-                    master_cg_map.insert(master_channel_name.clone(), cg_cg_master);
+                    master_cg_map.insert(master_channel_name.to_string(), cg_cg_master);
                     last_dg_pointer = pointer;
                     pointer = create_blocks(
                         &mut new_info,
@@ -385,7 +391,6 @@ pub fn mdfwriter4(
                         pointer,
                         master_cg,
                         cn_master,
-                        &cn_master.data,
                         &cg_cg_master,
                         true,
                         &si_position_map,
@@ -409,7 +414,6 @@ pub fn mdfwriter4(
                         pointer,
                         cg,
                         cn,
-                        &cn.data,
                         &cg_cg_master,
                         false,
                         &si_position_map,
@@ -629,7 +633,7 @@ pub fn mdfwriter4(
     }
 
     // thread writing the channels data first as block size can be unknown due to compression
-    let (tx, rx) = bounded::<(u64, Vec<u8>)>(n_channels.max(1) * 2);
+    let (tx, rx) = bounded::<(u64, Vec<u8>)>(64);
     let fname = Arc::new(Mutex::new(file_name.to_string()));
     let sfname = Arc::clone(&fname);
     let writer_handle = thread::spawn(move || -> Result<(), Error> {
@@ -681,220 +685,254 @@ pub fn mdfwriter4(
         },
     }
 
+    const MAX_WRITE_BATCH_CHANNELS: usize = 64;
+    const MAX_WRITE_BATCH_BYTES: usize = 32 * 1024 * 1024;
+
     let info_ref = &*info;
-    let mut work_items: Vec<(i64, u64, i64, &ChannelData)> = Vec::new();
+    let mut work_items: Vec<(i64, u64, i64, &Cn4, usize)> = Vec::new();
     for (&dg_pos, dg) in &new_info.dg {
         for (&cg_id, cg) in &dg.cg {
             for (&cn_pos, cn) in &cg.cn {
-                if let Some(src_data) = info_ref.get_channel_id(&cn.unique_name).and_then(
+                if let Some(src_cn) = info_ref.get_channel_id(&cn.unique_name).and_then(
                     |(_, src_dg_pos, (_, src_cg_id), (_, src_cn_pos))| {
                         info_ref
                             .dg
                             .get(src_dg_pos)
                             .and_then(|d| d.cg.get(src_cg_id))
                             .and_then(|c| c.cn.get(src_cn_pos))
-                            .map(|c| &c.data)
                     },
-                ) && !src_data.is_empty()
-                    && src_data.bit_count() > 0
+                ) && !src_cn.data.is_empty()
                 {
-                    work_items.push((dg_pos, cg_id, cn_pos, src_data));
+                    let est_bytes = match &src_cn.data {
+                        ChannelData::Utf8(a) => a.values().len(),
+                        ChannelData::VariableSizeByteArray(a) => a.values().len(),
+                        d => d.len().saturating_mul(8),
+                    };
+                    work_items.push((dg_pos, cg_id, cn_pos, src_cn, est_bytes));
                 }
             }
         }
     }
-    work_items.sort_unstable_by_key(|&(dg_pos, cg_id, cn_pos, _)| (dg_pos, cg_id, cn_pos));
+    work_items.sort_unstable_by_key(|&(dg_pos, cg_id, cn_pos, _, _)| (dg_pos, cg_id, cn_pos));
 
-    let prepared_blocks: Vec<PreparedChannelData> = work_items
-        .into_par_iter()
-        .map(
-            |(dg_pos, cg_id, cn_pos, data)| -> Result<PreparedChannelData, Error> {
-                let m = data.validity();
-                let is_vlsd = is_vlsd_data(data);
+    let mut data_pointer = pointer;
+    let mut item_idx = 0usize;
+    while item_idx < work_items.len() {
+        let batch_start = item_idx;
+        let mut batch_bytes = 0usize;
+        while item_idx < work_items.len() && (item_idx - batch_start) < MAX_WRITE_BATCH_CHANNELS {
+            let item_bytes = work_items[item_idx].4;
+            if item_idx > batch_start
+                && batch_bytes.saturating_add(item_bytes) > MAX_WRITE_BATCH_BYTES
+            {
+                break;
+            }
+            batch_bytes = batch_bytes.saturating_add(item_bytes);
+            item_idx += 1;
+        }
+        let batch = &work_items[batch_start..item_idx];
+        let prepared_blocks: Vec<PreparedChannelData> = batch
+            .into_par_iter()
+            .map(
+                |&(dg_pos, cg_id, cn_pos, src_cn, _)| -> Result<PreparedChannelData, Error> {
+                    let data_cow: Cow<'_, ChannelData> =
+                        crate::mdfreader::conversions4::convert_channel_data_cow(
+                            src_cn,
+                            &info_ref.sharable,
+                        )?;
+                    let data: &ChannelData = &data_cow;
+                    let m = data.validity();
+                    let is_vlsd = is_vlsd_data(data);
 
-                if is_vlsd {
-                    // Standard sorted VLSD:
-                    // 1. Write SDBLOCK (or DZ of SD) at cn.block.cn_data
-                    // 2. Write 64-bit offsets DV/DZ (+ DI/DZ + LD if validity mask) at dg.block.dg_data
-                    let mut sd_offset: i64 = 0;
-                    let (sd_block, sd_offsets) =
-                        if compression != CompressionAlgorithm::NoCompression {
+                    if is_vlsd {
+                        // Standard sorted VLSD:
+                        // 1. Write SDBLOCK (or DZ of SD) at cn.block.cn_data
+                        // 2. Write 64-bit offsets DV/DZ (+ DI/DZ + LD if validity mask) at dg.block.dg_data
+                        let mut sd_offset: i64 = 0;
+                        let (sd_block, sd_offsets) = if compression
+                            != CompressionAlgorithm::NoCompression
+                        {
                             create_dz_sd(data, &mut sd_offset, compression)
                                 .context("failed creating dz or sd block")?
                         } else {
                             create_sd(data, &mut sd_offset).context("failed creating sd block")?
                         };
-                    let sd_buffer = write_sd_block(0, sd_block, sd_offset as usize)?;
+                        let sd_buffer = write_sd_block(0, sd_block, sd_offset as usize)?;
 
-                    let offset_data = ChannelData::UInt64(arrow::array::UInt64Array::new(
-                        sd_offsets.into(),
-                        m.clone(),
-                    ));
-                    let mut dv_offset: i64 = 0;
-                    let mut ld_block: Option<Ld4Block> = None;
-                    if compression != CompressionAlgorithm::NoCompression || m.is_some() {
-                        ld_block = create_ld(&m, &mut dv_offset);
-                    }
-                    let dv_block = if compression != CompressionAlgorithm::NoCompression {
-                        create_dz_dv(&offset_data, &mut dv_offset, compression)
-                            .context("failed creating dz or dv block for VLSD offsets")?
-                    } else {
-                        create_dv(&offset_data, &mut dv_offset)
-                            .context("failed creating dv block for VLSD offsets")?
-                    };
-                    let mut invalid_block: Option<(DataBlock, Vec<u8>)> = None;
-                    let has_inval = m.is_some();
-                    if let Some(mask) = m {
-                        if let Some(ref mut ld) = ld_block {
-                            ld.ld_links.push(dv_offset);
+                        let offset_data = ChannelData::UInt64(arrow::array::UInt64Array::new(
+                            sd_offsets.into(),
+                            m.clone(),
+                        ));
+                        let mut dv_offset: i64 = 0;
+                        let mut ld_block: Option<Ld4Block> = None;
+                        if compression != CompressionAlgorithm::NoCompression || m.is_some() {
+                            ld_block = create_ld(&m, &mut dv_offset);
                         }
-                        if compression != CompressionAlgorithm::NoCompression {
-                            invalid_block = create_dz_di(&mask, &mut dv_offset, compression)
-                                .context("failed creating dz or di block")?;
+                        let dv_block = if compression != CompressionAlgorithm::NoCompression {
+                            create_dz_dv(&offset_data, &mut dv_offset, compression)
+                                .context("failed creating dz or dv block for VLSD offsets")?
                         } else {
-                            invalid_block = create_di(&mask, &mut dv_offset)
-                                .context("failed creating di block")?;
+                            create_dv(&offset_data, &mut dv_offset)
+                                .context("failed creating dv block for VLSD offsets")?
+                        };
+                        let mut invalid_block: Option<(DataBlock, Vec<u8>)> = None;
+                        let has_inval = m.is_some();
+                        if let Some(mask) = m {
+                            if let Some(ref mut ld) = ld_block {
+                                ld.ld_links.push(dv_offset);
+                            }
+                            if compression != CompressionAlgorithm::NoCompression {
+                                invalid_block = create_dz_di(&mask, &mut dv_offset, compression)
+                                    .context("failed creating dz or di block")?;
+                            } else {
+                                invalid_block = create_di(&mask, &mut dv_offset)
+                                    .context("failed creating di block")?;
+                            }
                         }
-                    }
-                    finalize_ld_zip_info(
-                        &mut ld_block,
-                        zip_info_for_data_block(&dv_block.0),
-                        invalid_block
-                            .as_ref()
-                            .map(|(b, _)| zip_info_for_data_block(b))
-                            .unwrap_or(255),
-                    );
-                    Ok(PreparedChannelData::Vlsd {
-                        dg_pos,
-                        cg_id,
-                        cn_pos,
-                        sd_offset,
-                        sd_buffer,
-                        dv_offset,
-                        ld_block,
-                        dv_block,
-                        invalid_block,
-                        has_inval,
-                    })
-                } else {
-                    // Regular channel: write DV/DZ block
-                    let mut offset: i64 = 0;
-                    let mut ld_block: Option<Ld4Block> = None;
-                    if compression != CompressionAlgorithm::NoCompression || m.is_some() {
-                        ld_block = create_ld(&m, &mut offset);
-                    }
-
-                    let data_block = if compression != CompressionAlgorithm::NoCompression {
-                        create_dz_dv(data, &mut offset, compression)
-                            .context("failed creating dz or dv block")?
+                        finalize_ld_zip_info(
+                            &mut ld_block,
+                            zip_info_for_data_block(&dv_block.0),
+                            invalid_block
+                                .as_ref()
+                                .map(|(b, _)| zip_info_for_data_block(b))
+                                .unwrap_or(255),
+                        );
+                        Ok(PreparedChannelData::Vlsd {
+                            dg_pos,
+                            cg_id,
+                            cn_pos,
+                            sd_offset,
+                            sd_buffer,
+                            dv_offset,
+                            ld_block,
+                            dv_block,
+                            invalid_block,
+                            has_inval,
+                        })
                     } else {
-                        create_dv(data, &mut offset).context("failed creating dv block")?
-                    };
-
-                    let mut invalid_block: Option<(DataBlock, Vec<u8>)> = None;
-                    let has_inval = m.is_some();
-                    if let Some(mask) = m {
-                        if let Some(ref mut ld) = ld_block {
-                            ld.ld_links.push(offset);
+                        // Regular channel: write DV/DZ block
+                        let mut offset: i64 = 0;
+                        let mut ld_block: Option<Ld4Block> = None;
+                        if compression != CompressionAlgorithm::NoCompression || m.is_some() {
+                            ld_block = create_ld(&m, &mut offset);
                         }
-                        if compression != CompressionAlgorithm::NoCompression {
-                            invalid_block = create_dz_di(&mask, &mut offset, compression)
-                                .context("failed creating dz or di block")?;
+
+                        let data_block = if compression != CompressionAlgorithm::NoCompression {
+                            create_dz_dv(data, &mut offset, compression)
+                                .context("failed creating dz or dv block")?
                         } else {
-                            invalid_block = create_di(&mask, &mut offset)
-                                .context("failed creating di block")?;
-                        }
-                    }
-                    finalize_ld_zip_info(
-                        &mut ld_block,
-                        zip_info_for_data_block(&data_block.0),
-                        invalid_block
-                            .as_ref()
-                            .map(|(b, _)| zip_info_for_data_block(b))
-                            .unwrap_or(255),
-                    );
-                    Ok(PreparedChannelData::Regular {
-                        dg_pos,
-                        cg_id,
-                        offset,
-                        ld_block,
-                        data_block,
-                        invalid_block,
-                        has_inval,
-                    })
-                }
-            },
-        )
-        .collect::<Result<Vec<_>, Error>>()?;
+                            create_dv(data, &mut offset).context("failed creating dv block")?
+                        };
 
-    let mut data_pointer = pointer;
-    for prepared in prepared_blocks {
-        match prepared {
-            PreparedChannelData::Vlsd {
-                dg_pos,
-                cg_id,
-                cn_pos,
-                sd_offset,
-                sd_buffer,
-                dv_offset,
-                ld_block,
-                dv_block,
-                invalid_block,
-                has_inval,
-            } => {
-                let sd_pos = data_pointer;
-                data_pointer += sd_offset;
-                let dv_pos = data_pointer;
-                data_pointer += dv_offset;
-                let dv_buffer = write_data_blocks(
-                    dv_pos,
+                        let mut invalid_block: Option<(DataBlock, Vec<u8>)> = None;
+                        let has_inval = m.is_some();
+                        if let Some(mask) = m {
+                            if let Some(ref mut ld) = ld_block {
+                                ld.ld_links.push(offset);
+                            }
+                            if compression != CompressionAlgorithm::NoCompression {
+                                invalid_block = create_dz_di(&mask, &mut offset, compression)
+                                    .context("failed creating dz or di block")?;
+                            } else {
+                                invalid_block = create_di(&mask, &mut offset)
+                                    .context("failed creating di block")?;
+                            }
+                        }
+                        finalize_ld_zip_info(
+                            &mut ld_block,
+                            zip_info_for_data_block(&data_block.0),
+                            invalid_block
+                                .as_ref()
+                                .map(|(b, _)| zip_info_for_data_block(b))
+                                .unwrap_or(255),
+                        );
+                        Ok(PreparedChannelData::Regular {
+                            dg_pos,
+                            cg_id,
+                            offset,
+                            ld_block,
+                            data_block,
+                            invalid_block,
+                            has_inval,
+                        })
+                    }
+                },
+            )
+            .collect::<Result<Vec<_>, Error>>()?;
+
+        for prepared in prepared_blocks {
+            match prepared {
+                PreparedChannelData::Vlsd {
+                    dg_pos,
+                    cg_id,
+                    cn_pos,
+                    sd_offset,
+                    sd_buffer,
+                    dv_offset,
                     ld_block,
                     dv_block,
                     invalid_block,
-                    dv_offset as usize,
-                )?;
-                tx.send((sd_pos as u64, sd_buffer))
-                    .context("Channel disconnected")?;
-                tx.send((dv_pos as u64, dv_buffer))
-                    .context("Channel disconnected")?;
-                if let Some(dg) = new_info.dg.get_mut(&dg_pos) {
-                    dg.block.dg_data = dv_pos;
-                    if let Some(cg) = dg.cg.get_mut(&cg_id) {
-                        if has_inval {
+                    has_inval,
+                } => {
+                    let sd_pos = data_pointer;
+                    data_pointer += sd_offset;
+                    let dv_pos = data_pointer;
+                    data_pointer += dv_offset;
+                    let dv_buffer = write_data_blocks(
+                        dv_pos,
+                        ld_block,
+                        dv_block,
+                        invalid_block,
+                        dv_offset as usize,
+                    )?;
+                    tx.send((sd_pos as u64, sd_buffer))
+                        .context("Channel disconnected")?;
+                    tx.send((dv_pos as u64, dv_buffer))
+                        .context("Channel disconnected")?;
+                    if let Some(dg) = new_info.dg.get_mut(&dg_pos) {
+                        dg.block.dg_data = dv_pos;
+                        if let Some(cg) = dg.cg.get_mut(&cg_id) {
+                            if has_inval {
+                                cg.block.cg_inval_bytes = 1;
+                                for cn in cg.cn.values_mut() {
+                                    cn.block.cn_flags |= CN_F_INVALID;
+                                    cn.block.cn_inval_bit_pos = 0;
+                                }
+                            }
+                            if let Some(cn) = cg.cn.get_mut(&cn_pos) {
+                                cn.block.cn_data = sd_pos;
+                            }
+                        }
+                    }
+                }
+                PreparedChannelData::Regular {
+                    dg_pos,
+                    cg_id,
+                    offset,
+                    ld_block,
+                    data_block,
+                    invalid_block,
+                    has_inval,
+                } => {
+                    let pos = data_pointer;
+                    data_pointer += offset;
+                    let buffer = write_data_blocks(
+                        pos,
+                        ld_block,
+                        data_block,
+                        invalid_block,
+                        offset as usize,
+                    )?;
+                    tx.send((pos as u64, buffer))
+                        .context("Channel disconnected")?;
+                    if let Some(dg) = new_info.dg.get_mut(&dg_pos) {
+                        dg.block.dg_data = pos;
+                        if has_inval && let Some(cg) = dg.cg.get_mut(&cg_id) {
                             cg.block.cg_inval_bytes = 1;
                             for cn in cg.cn.values_mut() {
                                 cn.block.cn_flags |= CN_F_INVALID;
                                 cn.block.cn_inval_bit_pos = 0;
                             }
-                        }
-                        if let Some(cn) = cg.cn.get_mut(&cn_pos) {
-                            cn.block.cn_data = sd_pos;
-                        }
-                    }
-                }
-            }
-            PreparedChannelData::Regular {
-                dg_pos,
-                cg_id,
-                offset,
-                ld_block,
-                data_block,
-                invalid_block,
-                has_inval,
-            } => {
-                let pos = data_pointer;
-                data_pointer += offset;
-                let buffer =
-                    write_data_blocks(pos, ld_block, data_block, invalid_block, offset as usize)?;
-                tx.send((pos as u64, buffer))
-                    .context("Channel disconnected")?;
-                if let Some(dg) = new_info.dg.get_mut(&dg_pos) {
-                    dg.block.dg_data = pos;
-                    if has_inval && let Some(cg) = dg.cg.get_mut(&cg_id) {
-                        cg.block.cg_inval_bytes = 1;
-                        for cn in cg.cn.values_mut() {
-                            cn.block.cn_flags |= CN_F_INVALID;
-                            cn.block.cn_inval_bit_pos = 0;
                         }
                     }
                 }
@@ -1603,14 +1641,19 @@ fn create_blocks(
     mut pointer: i64,
     cg: &Cg4,
     cn: &Cn4,
-    data: &ChannelData,
     cg_cg_master: &i64,
     master_flag: bool,
     si_position_map: &HashMap<i64, i64>,
 ) -> Result<i64> {
-    let bit_count = data.bit_count();
-    if !data.is_empty() && bit_count > 0 {
-        let byte_count = data.byte_count();
+    let machine_endian: bool = cfg!(target_endian = "big");
+    let sig = crate::mdfreader::conversions4::converted_output_signature(
+        cn,
+        &info.sharable,
+        machine_endian,
+    )?;
+    let bit_count = sig.bit_count;
+    if !cn.data.is_empty() && bit_count > 0 {
+        let byte_count = sig.byte_count;
         // no empty strings
         let mut dg_block = Dg4Block::default();
         let mut cg_block_header = default_short_header(BlockType::CG);
@@ -1634,7 +1677,7 @@ fn create_blocks(
 
         // CN Block
         let cn_position = pointer + cg_block_header.hdr_len as i64;
-        let is_vlsd = is_vlsd_data(data);
+        let is_vlsd = sig.is_vlsd;
 
         // For VLSD channels, fixed record holds 8-byte (64-bit) offset into SDBLOCK
         if is_vlsd {
@@ -1642,7 +1685,7 @@ fn create_blocks(
         } else {
             cg_block.cg_data_bytes = byte_count;
         }
-        if data.validity().is_some() {
+        if sig.has_validity {
             // One byte for invalid data as only one channel per CG
             cg_block.cg_inval_bytes = 1;
             cn_block.cn_flags |= CN_F_INVALID;
@@ -1662,9 +1705,7 @@ fn create_blocks(
             cn_block.cn_type = 1; // VLSD channel type
         }
 
-        let machine_endian: bool = cfg!(target_endian = "big");
-
-        cn_block.cn_data_type = data.data_type(machine_endian);
+        cn_block.cn_data_type = sig.data_type;
 
         // For VLSD, cn_bit_count = 64 (8-byte offset into SDBLOCK)
         if is_vlsd {
@@ -1723,20 +1764,8 @@ fn create_blocks(
         }
 
         // Channel array
-        let is_array_channel = matches!(
-            cn.data,
-            ChannelData::ArrayDInt8(_)
-                | ChannelData::ArrayDUInt8(_)
-                | ChannelData::ArrayDInt16(_)
-                | ChannelData::ArrayDUInt16(_)
-                | ChannelData::ArrayDInt32(_)
-                | ChannelData::ArrayDUInt32(_)
-                | ChannelData::ArrayDFloat32(_)
-                | ChannelData::ArrayDInt64(_)
-                | ChannelData::ArrayDUInt64(_)
-                | ChannelData::ArrayDFloat64(_)
-        );
-        let mut composition: Option<Composition> = None;
+        let is_array_channel = sig.is_array;
+        let mut composition: Option<Box<Composition>> = None;
         if is_array_channel {
             let data_dim_size: Vec<u64> = cn.data.shape().0.iter().map(|x| *x as u64).collect();
 
@@ -1761,10 +1790,10 @@ fn create_blocks(
             ca_block.ca_len = ca_block.calculate_block_len();
 
             pointer += ca_block.ca_len as i64;
-            composition = Some(Composition {
+            composition = Some(Box::new(Composition {
                 block: Compo::CA(Box::new(ca_block)),
                 compo: None,
-            });
+            }));
         } else if let Some(ref source_compo) = cn.composition {
             // Preserve non-CA composition from source (DS, CL, CV, CU, CN)
             match &source_compo.block {
@@ -1818,14 +1847,12 @@ fn create_blocks(
             master_channel_name: cg.master_channel_name.clone(),
             cn: FxHashMap::default(),
             block_position: cg_position,
-            channel_names: HashSet::new(),
             record_length: cg_block.cg_data_bytes,
             vlsd_cg: None,
             invalid_bytes: None,
             sr: Vec::new(),
         };
         new_cg.cn.insert(0, new_cn);
-        new_cg.channel_names.insert(cn.unique_name.clone());
         let mut new_dg = Dg4 {
             block: dg_block,
             cg: FxHashMap::default(),

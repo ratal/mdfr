@@ -9,7 +9,6 @@ use arrow::compute::take;
 use arrow::datatypes::{Field, UnionFields};
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
-use std::collections::HashSet;
 use std::fmt::{self, Display};
 use std::io::Cursor;
 use std::sync::Arc;
@@ -95,7 +94,6 @@ fn parse_cg4_block(
         block: cg,
         cn,
         master_channel_name: None,
-        channel_names: HashSet::new(),
         record_length,
         block_position: target,
         vlsd_cg: None,
@@ -164,9 +162,7 @@ pub struct Cg4 {
     /// hashmap of channels
     pub cn: CnType,
     /// Master channel name
-    pub master_channel_name: Option<String>,
-    /// Set of channel names belonging to this channel group
-    pub channel_names: HashSet<String>,
+    pub master_channel_name: Option<std::sync::Arc<str>>,
     /// as not stored in .block but can still be referenced by other blocks
     pub block_position: i64,
     /// record length including recordId and invalid bytes
@@ -258,37 +254,35 @@ impl Cg4 {
                 .par_iter_mut()
                 .filter(|(_rec_pos, cn)| !cn.data.is_empty())
                 .try_for_each(|(_rec_pos, cn): (&i64, &mut Cn4)| -> Result<(), Error> {
-                    if let Some((validity, invalid_byte_position, invalid_byte_mask)) =
-                        &mut cn.invalid_mask
-                    {
-                        if let Some(mask) = validity {
-                            if *invalid_byte_mask != 0 && cg_inval_bytes > 0 {
-                                let mask_len = mask.len();
-                                // mask is already initialised to all valid values.
-                                invalid_bytes
-                                    .chunks(cg_inval_bytes)
-                                    .take(mask_len)
-                                    .enumerate()
-                                    .for_each(|(index, record)| {
-                                        // arrow considers bit set as valid while mdf spec considers bit set as invalid
-                                        if *invalid_byte_position < record.len() {
-                                            mask.set_bit(
-                                                index,
-                                                (record[*invalid_byte_position]
-                                                    & *invalid_byte_mask)
-                                                    == 0,
-                                            );
-                                        }
-                                    });
-                            }
-                            cn.data.set_validity(mask).with_context(|| {
-                                format!(
-                                    "failed applying invalid bits for channel {}",
-                                    cn.unique_name
-                                )
-                            })?;
+                    if let Some(mask_state) = &mut cn.invalid_mask {
+                        let data_len = cn.data.len();
+                        let (mask, invalid_byte_position, invalid_byte_mask) =
+                            mask_state.materialize_mut(data_len);
+                        if invalid_byte_mask != 0 && cg_inval_bytes > 0 {
+                            let mask_len = mask.len();
+                            // mask is already initialised to all valid values.
+                            invalid_bytes
+                                .chunks(cg_inval_bytes)
+                                .take(mask_len)
+                                .enumerate()
+                                .for_each(|(index, record)| {
+                                    // arrow considers bit set as valid while mdf spec considers bit set as invalid
+                                    if invalid_byte_position < record.len() {
+                                        mask.set_bit(
+                                            index,
+                                            (record[invalid_byte_position] & invalid_byte_mask)
+                                                == 0,
+                                        );
+                                    }
+                                });
                         }
-                        *validity = None;
+                        cn.data.set_validity(mask).with_context(|| {
+                            format!(
+                                "failed applying invalid bits for channel {}",
+                                cn.unique_name
+                            )
+                        })?;
+                        mask_state.clear_builder();
                     }
                     Ok(())
                 })?;
@@ -300,18 +294,25 @@ impl Cg4 {
                 .par_iter_mut()
                 .filter(|(_rec_pos, cn)| !cn.data.is_empty())
                 .try_for_each(|(_rec_pos, cn): (&i64, &mut Cn4)| -> Result<(), Error> {
-                    if let Some((validity, _invalid_byte_position, _invalid_byte_mask)) =
-                        &mut cn.invalid_mask
-                    {
-                        if let Some(mask) = validity {
+                    let data_len = cn.data.len();
+                    if let Some(mask_state) = &mut cn.invalid_mask {
+                        let needs_materialize = matches!(
+                            mask_state,
+                            crate::mdfinfo::mdfinfo4::cn_impl::InvalidMaskState::Pending {
+                                default_valid: false,
+                                ..
+                            } | crate::mdfinfo::mdfinfo4::cn_impl::InvalidMaskState::Builder { .. }
+                        );
+                        if needs_materialize {
+                            let (mask, _, _) = mask_state.materialize_mut(data_len);
                             cn.data.set_validity(mask).with_context(|| {
                                 format!(
                                     "failed applying invalid bits for channel {} from mask",
                                     cn.unique_name
                                 )
                             })?;
+                            mask_state.clear_builder();
                         }
-                        *validity = None; // clean bitmask from Cn4 as present in arrow array
                     }
                     Ok(())
                 })?;
@@ -384,7 +385,7 @@ impl Cg4 {
                     .iter()
                     .map(
                         |ptr| match self.cn.values().find(|cn| cn.block_position == *ptr) {
-                            Some(cn) => (Some(cn.data.clone()), cn.unique_name.clone()),
+                            Some(cn) => (Some(cn.data.clone()), cn.unique_name.to_string()),
                             None => (None, String::new()),
                         },
                     )
@@ -599,7 +600,7 @@ impl Cg4 {
                         .values()
                         .find(|cn| cn.block_position == *ptr)
                         .map(|cn| {
-                            let name = cn.unique_name.clone();
+                            let name = cn.unique_name.to_string();
                             let array = cn.data.finish_cloned();
                             (name, array)
                         })

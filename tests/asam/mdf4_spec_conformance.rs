@@ -1159,7 +1159,6 @@ fn test_mdf4_spec_fig45_le_and_fig46_be_bit_offset_mask() -> Result<()> {
     };
     use mdfr::mdfreader::data_read4::read_channels_from_bytes;
     use mdfr::mdfreader::mdfreader4::apply_bit_mask_offset;
-    use std::collections::HashSet;
 
     // MDF 4.3.0 §6.26.5.2 Figure 45:
     // Bytes on disk: [0xAB, 0xCD, 0xEF]
@@ -1244,7 +1243,6 @@ fn test_mdf4_spec_fig45_le_and_fig46_be_bit_offset_mask() -> Result<()> {
             block: cg_block,
             cn: cn_map,
             master_channel_name: None,
-            channel_names: HashSet::new(),
             block_position: 0,
             record_length: 3,
             vlsd_cg: None,
@@ -1677,9 +1675,17 @@ fn test_unfinalized_cycle_count_rebuilds_invalid_mask() -> Result<()> {
     if let MdfInfo::V4(info) = &mdf.mdf_info {
         let cn = &info.dg[&dg_pos].cg[&0].cn[&0];
         assert!(
-            matches!(cn.invalid_mask, Some((Some(_), 0, 1))),
+            matches!(
+                cn.invalid_mask,
+                Some(mdfr::mdfinfo::mdfinfo4::InvalidMaskState::Pending {
+                    byte_pos: 0,
+                    byte_mask: 1,
+                    default_valid: true,
+                    cycles: 2,
+                })
+            ),
             "expected rebuilt BooleanBufferBuilder before loading data, got {:?}",
-            cn.invalid_mask.as_ref().map(|(_, b, m)| (*b, *m))
+            cn.invalid_mask.as_ref().map(|s| s.byte_pos_and_mask())
         );
     }
     mdf.load_all_channels_data_in_memory()?;

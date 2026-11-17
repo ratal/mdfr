@@ -105,7 +105,8 @@ pub fn mdf4_cg_to_hdf5(
 ) -> Result<()> {
     let master_channel = cg
         .master_channel_name
-        .clone()
+        .as_deref()
+        .map(str::to_string)
         .unwrap_or(format!("no_master_channel_{}", cg.block_position));
     let group = file
         .create_group(&master_channel)
@@ -175,7 +176,8 @@ pub fn mdf3_cg_to_hdf5(
 ) -> Result<()> {
     let master_channel = cg
         .master_channel_name
-        .clone()
+        .as_deref()
+        .map(str::to_string)
         .unwrap_or(format!("no_master_channel_{}", cg.block_position));
     let group = file
         .create_group(&master_channel)

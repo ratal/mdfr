@@ -508,9 +508,9 @@ impl MdfInfo {
                 .iter()
                 .map(|(name, (master, dg, (cg, rec_id), cn))| {
                     (
-                        name.clone(),
+                        name.to_string(),
                         (
-                            master.clone(),
+                            master.as_deref().map(str::to_string),
                             *dg as i64,
                             *cg as i64,
                             *rec_id as u64,
@@ -525,8 +525,15 @@ impl MdfInfo {
                 .iter()
                 .map(|(name, (master, dg, (cg, rec_id), (cn, rec_pos)))| {
                     (
-                        name.clone(),
-                        (master.clone(), *dg, *cg, *rec_id, *cn, *rec_pos),
+                        name.to_string(),
+                        (
+                            master.as_deref().map(str::to_string),
+                            *dg,
+                            *cg,
+                            *rec_id,
+                            *cn,
+                            *rec_pos,
+                        ),
                     )
                 })
                 .collect(),
@@ -602,17 +609,10 @@ impl MdfInfo {
         channel_master_list
     }
     /// returns an iterator over all channel names (zero-copy)
-    pub fn channel_names(&self) -> Box<dyn Iterator<Item = &String> + '_> {
+    pub fn channel_names(&self) -> Box<dyn Iterator<Item = &str> + '_> {
         match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.channel_names(),
             MdfInfo::V4(mdfinfo4) => mdfinfo4.channel_names(),
-        }
-    }
-    /// returns a reference to the channel names in the same channel group (zero-copy)
-    pub fn channel_names_cg_set_ref(&self, channel_name: &str) -> Option<&HashSet<String>> {
-        match self {
-            MdfInfo::V3(mdfinfo3) => mdfinfo3.channel_names_cg_set_ref(channel_name),
-            MdfInfo::V4(mdfinfo4) => mdfinfo4.channel_names_cg_set_ref(channel_name),
         }
     }
     /// Clears all data arrays

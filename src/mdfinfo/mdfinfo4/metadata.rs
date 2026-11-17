@@ -481,20 +481,20 @@ pub struct MetaData {
     /// Header of the block
     pub block: Blockheader4,
     /// Raw bytes for the block's data
-    pub raw_data: Vec<u8>,
+    pub raw_data: Box<[u8]>,
     /// Block type, TX, MD or MD not yet parsed
     pub block_type: MetaDataBlockType,
     /// Parent block type
     pub parent_block_type: BlockType,
     /// Typed parsed metadata (replaces flat comments HashMap)
-    pub md_comment: Option<MdComment>,
+    pub md_comment: Option<Box<MdComment>>,
 }
 
 impl Display for MetaData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.block_type {
             MetaDataBlockType::MdParsed => {
-                if let Some(mc) = &self.md_comment {
+                if let Some(mc) = self.md_comment.as_deref() {
                     write!(f, "{mc}")
                 } else {
                     write!(f, "MD (parsed, empty)")
@@ -605,7 +605,7 @@ impl MetaData {
         };
         MetaData {
             block: header,
-            raw_data: Vec::new(),
+            raw_data: Box::default(),
             block_type,
             parent_block_type,
             md_comment: None,
@@ -634,7 +634,7 @@ impl MetaData {
         match self.block_type {
             MetaDataBlockType::MdParsed => Ok(self
                 .md_comment
-                .as_ref()
+                .as_deref()
                 .and_then(|mc| mc.get_tx())
                 .map(std::string::ToString::to_string)),
             MetaDataBlockType::MdBlock => {
@@ -697,7 +697,7 @@ impl MetaData {
         if rem != 0 {
             raw.resize(raw.len() + (8 - rem), 0);
         }
-        self.raw_data = raw;
+        self.raw_data = raw.into_boxed_slice();
         self.block.hdr_len = self.raw_data.len() as u64 + 24;
     }
     /// Zero-allocation helper: borrow trimmed XML str from raw_data
@@ -744,7 +744,7 @@ impl MetaData {
                 }
             }
         }
-        self.md_comment = Some(MdComment::Hd(hd));
+        self.md_comment = Some(Box::new(MdComment::Hd(hd)));
         self.block_type = MetaDataBlockType::MdParsed;
         Ok(())
     }
@@ -767,7 +767,7 @@ impl MetaData {
         );
         let fh_comments = raw_comments.as_bytes();
         self.block.hdr_len = fh_comments.len() as u64 + 24;
-        self.raw_data = fh_comments.to_vec();
+        self.raw_data = fh_comments.into();
     }
     /// Parse FH block MD comment (fh_comment.xsd)
     fn parse_fh_comment(&mut self) -> Result<()> {
@@ -794,7 +794,7 @@ impl MetaData {
                 Err(e) => log::warn!("Could not parse FH comment : \n{xml_str}\n{e}"),
             }
         }
-        self.md_comment = Some(MdComment::Fh(fh));
+        self.md_comment = Some(Box::new(MdComment::Fh(fh)));
         self.block_type = MetaDataBlockType::MdParsed;
         Ok(())
     }
@@ -828,7 +828,7 @@ impl MetaData {
                 Err(e) => log::warn!("Could not parse CN comment : \n{xml_str}\n{e}"),
             }
         }
-        self.md_comment = Some(MdComment::Cn(cn));
+        self.md_comment = Some(Box::new(MdComment::Cn(cn)));
         self.block_type = MetaDataBlockType::MdParsed;
         Ok(())
     }
@@ -854,7 +854,7 @@ impl MetaData {
                 Err(e) => log::warn!("Could not parse CG comment : \n{xml_str}\n{e}"),
             }
         }
-        self.md_comment = Some(MdComment::Cg(cg));
+        self.md_comment = Some(Box::new(MdComment::Cg(cg)));
         self.block_type = MetaDataBlockType::MdParsed;
         Ok(())
     }
@@ -881,7 +881,7 @@ impl MetaData {
                 Err(e) => log::warn!("Could not parse CC comment : \n{xml_str}\n{e}"),
             }
         }
-        self.md_comment = Some(MdComment::Cc(cc));
+        self.md_comment = Some(Box::new(MdComment::Cc(cc)));
         self.block_type = MetaDataBlockType::MdParsed;
         Ok(())
     }
@@ -910,7 +910,7 @@ impl MetaData {
                 Err(e) => log::warn!("Could not parse SI comment : \n{xml_str}\n{e}"),
             }
         }
-        self.md_comment = Some(MdComment::Si(si));
+        self.md_comment = Some(Box::new(MdComment::Si(si)));
         self.block_type = MetaDataBlockType::MdParsed;
         Ok(())
     }
@@ -943,7 +943,7 @@ impl MetaData {
                 Err(e) => log::warn!("Could not parse EV comment : \n{xml_str}\n{e}"),
             }
         }
-        self.md_comment = Some(MdComment::Ev(ev));
+        self.md_comment = Some(Box::new(MdComment::Ev(ev)));
         self.block_type = MetaDataBlockType::MdParsed;
         Ok(())
     }
@@ -968,7 +968,7 @@ impl MetaData {
                 Err(e) => log::warn!("Could not parse AT comment : \n{xml_str}\n{e}"),
             }
         }
-        self.md_comment = Some(MdComment::At(at));
+        self.md_comment = Some(Box::new(MdComment::At(at)));
         self.block_type = MetaDataBlockType::MdParsed;
         Ok(())
     }
@@ -994,7 +994,7 @@ impl MetaData {
                 Err(e) => log::warn!("Could not parse CH comment : \n{xml_str}\n{e}"),
             }
         }
-        self.md_comment = Some(MdComment::Ch(ch));
+        self.md_comment = Some(Box::new(MdComment::Ch(ch)));
         self.block_type = MetaDataBlockType::MdParsed;
         Ok(())
     }
@@ -1019,7 +1019,7 @@ impl MetaData {
                 Err(e) => log::warn!("Could not parse DG comment : \n{xml_str}\n{e}"),
             }
         }
-        self.md_comment = Some(MdComment::Dg(dg));
+        self.md_comment = Some(Box::new(MdComment::Dg(dg)));
         self.block_type = MetaDataBlockType::MdParsed;
         Ok(())
     }
@@ -1128,7 +1128,7 @@ mod tests {
         md.parse_xml().unwrap();
 
         assert_eq!(md.block_type, MetaDataBlockType::MdParsed);
-        let comment = md.md_comment.as_ref().unwrap();
+        let comment = md.md_comment.as_deref().unwrap();
         if let MdComment::Hd(hd) = comment {
             assert_eq!(hd.tx.as_deref(), Some("Test measurement"));
             assert_eq!(hd.time_source.as_deref(), Some("PC timer"));
@@ -1157,7 +1157,7 @@ mod tests {
         let mut md = make_md(BlockType::FH, xml);
         md.parse_xml().unwrap();
 
-        if let Some(MdComment::Fh(fh)) = &md.md_comment {
+        if let Some(MdComment::Fh(fh)) = md.md_comment.as_deref() {
             assert_eq!(fh.tx.as_deref(), Some("created"));
             assert_eq!(fh.tool_id.as_deref(), Some("mdfr"));
             assert_eq!(fh.tool_vendor.as_deref(), Some("ratalco"));
@@ -1180,7 +1180,7 @@ mod tests {
         let mut md = make_md(BlockType::CN, xml);
         md.parse_xml().unwrap();
 
-        if let Some(MdComment::Cn(cn)) = &md.md_comment {
+        if let Some(MdComment::Cn(cn)) = md.md_comment.as_deref() {
             assert_eq!(cn.tx.as_deref(), Some("Engine speed"));
             assert_eq!(cn.names.name.as_deref(), Some("RPM"));
             assert_eq!(cn.names.display.as_deref(), Some("Engine RPM"));
@@ -1207,7 +1207,7 @@ mod tests {
         let mut md = make_md(BlockType::EV, xml);
         md.parse_xml().unwrap();
 
-        if let Some(MdComment::Ev(ev)) = &md.md_comment {
+        if let Some(MdComment::Ev(ev)) = md.md_comment.as_deref() {
             assert_eq!(ev.tx.as_deref(), Some("trigger event"));
             assert_eq!(ev.pre_trigger_interval, Some(1.5));
             assert_eq!(ev.post_trigger_interval, Some(3.0));
@@ -1230,7 +1230,7 @@ mod tests {
         let mut md = make_md(BlockType::SI, xml);
         md.parse_xml().unwrap();
 
-        if let Some(MdComment::Si(si)) = &md.md_comment {
+        if let Some(MdComment::Si(si)) = md.md_comment.as_deref() {
             assert_eq!(si.tx.as_deref(), Some("ECU source"));
             assert_eq!(si.names.name.as_deref(), Some("ECU_1"));
             assert_eq!(si.names.vendor.as_deref(), Some("Bosch"));
@@ -1251,7 +1251,7 @@ mod tests {
         let mut md = make_md(BlockType::CG, xml);
         md.parse_xml().unwrap();
 
-        if let Some(MdComment::Cg(cg)) = &md.md_comment {
+        if let Some(MdComment::Cg(cg)) = md.md_comment.as_deref() {
             assert_eq!(cg.tx.as_deref(), Some("Group 1"));
             assert_eq!(cg.names.name.as_deref(), Some("CG_1"));
             assert_eq!(cg.names.description.as_deref(), Some("First group"));
@@ -1270,7 +1270,7 @@ mod tests {
         let mut md = make_md(BlockType::CC, xml);
         md.parse_xml().unwrap();
 
-        if let Some(MdComment::Cc(cc)) = &md.md_comment {
+        if let Some(MdComment::Cc(cc)) = md.md_comment.as_deref() {
             assert_eq!(cc.tx.as_deref(), Some("Conversion rule"));
             assert_eq!(cc.names.name.as_deref(), Some("linear_conv"));
             assert_eq!(cc.formula.as_deref(), Some("x * 2 + 1"));
@@ -1301,7 +1301,7 @@ mod tests {
         let mut md = make_md(BlockType::HD, xml);
         md.parse_xml().unwrap();
 
-        if let Some(MdComment::Hd(hd)) = &md.md_comment {
+        if let Some(MdComment::Hd(hd)) = md.md_comment.as_deref() {
             // Value
             if let Some(PropertyValue::Value(v)) = hd.common_properties.get("simple") {
                 assert_eq!(v, "value1");
@@ -1465,7 +1465,7 @@ mod tests {
         let mut md = make_md(BlockType::DG, xml);
         md.parse_xml().unwrap();
 
-        if let Some(MdComment::Dg(dg)) = &md.md_comment {
+        if let Some(MdComment::Dg(dg)) = md.md_comment.as_deref() {
             assert_eq!(dg.tx.as_deref(), Some("data group info"));
             assert!(dg.common_properties.contains_key("key"));
         } else {
@@ -1482,7 +1482,7 @@ mod tests {
         let mut md = make_md(BlockType::CH, xml);
         md.parse_xml().unwrap();
 
-        if let Some(MdComment::Ch(ch)) = &md.md_comment {
+        if let Some(MdComment::Ch(ch)) = md.md_comment.as_deref() {
             assert_eq!(ch.tx.as_deref(), Some("hierarchy"));
             assert_eq!(ch.names.name.as_deref(), Some("Group1"));
             assert_eq!(ch.names.display.as_deref(), Some("First Group"));
@@ -1500,7 +1500,7 @@ mod tests {
         let mut md = make_md(BlockType::AT, xml);
         md.parse_xml().unwrap();
 
-        if let Some(MdComment::At(at)) = &md.md_comment {
+        if let Some(MdComment::At(at)) = md.md_comment.as_deref() {
             assert_eq!(at.tx.as_deref(), Some("attachment info"));
             assert!(at.common_properties.contains_key("mime"));
         } else {

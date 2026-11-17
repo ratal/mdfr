@@ -36,7 +36,7 @@ pub fn export_to_parquet(
     match &mdf.mdf_info {
         MdfInfo::V4(mdfinfo4) => {
             for dg in mdfinfo4.dg.values() {
-                if dg.cg.values().any(|cg| !cg.channel_names.is_empty()) {
+                if dg.cg.values().any(|cg| !cg.cn.is_empty()) {
                     // Collect CGs to export in parallel
                     let cg_refs: Vec<(&u64, &Cg4)> = dg.cg.iter().collect();
                     cg_refs.par_iter().try_for_each(|(rec_id, cg)| {
@@ -106,8 +106,8 @@ pub fn mdf4_cg_to_parquet(
     cg: &Cg4,
     parquet_compression: Compression,
 ) -> Result<()> {
-    let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
-    let mut fields = SchemaBuilder::with_capacity(cg.channel_names.len());
+    let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.cn.len());
+    let mut fields = SchemaBuilder::with_capacity(cg.cn.len());
     cg.cn
         .iter()
         .try_for_each(|(_rec_pos, cn): (&i64, &Cn4)| -> Result<(), Error> {
@@ -127,7 +127,7 @@ pub fn mdf4_cg_to_parquet(
         }
         let finalised_arrow_schema = Arc::new(fields.finish());
         write_data(
-            cg.master_channel_name.clone(),
+            cg.master_channel_name.as_deref().map(str::to_string),
             *rec_id,
             file_name,
             parquet_compression,
@@ -152,8 +152,8 @@ pub fn mdf3_cg_to_parquet(
     cg: &Cg3,
     parquet_compression: Compression,
 ) -> Result<()> {
-    let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
-    let mut fields = SchemaBuilder::with_capacity(cg.channel_names.len());
+    let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.cn.len());
+    let mut fields = SchemaBuilder::with_capacity(cg.cn.len());
     cg.cn
         .iter()
         .try_for_each(|(_rec_pos, cn): (&u32, &Cn3)| -> Result<(), Error> {
@@ -173,7 +173,7 @@ pub fn mdf3_cg_to_parquet(
         }
         let finalised_arrow_schema = Arc::new(fields.finish());
         write_data(
-            cg.master_channel_name.clone(),
+            cg.master_channel_name.as_deref().map(str::to_string),
             u64::from(*rec_id),
             file_name,
             parquet_compression,
@@ -262,7 +262,7 @@ fn create_parquet_writer(
 #[inline]
 fn mdf4_field(mdfinfo4: &MdfInfo4, cn: &Cn4) -> Field {
     let field = Field::new(
-        cn.unique_name.clone(),
+        cn.unique_name.to_string(),
         cn.data.arrow_data_type().clone(),
         cn.data.validity().is_some(),
     );
@@ -290,7 +290,7 @@ fn mdf4_field(mdfinfo4: &MdfInfo4, cn: &Cn4) -> Field {
 #[inline]
 fn mdf3_field(mdfinfo3: &MdfInfo3, cn: &Cn3) -> Field {
     let field = Field::new(
-        cn.unique_name.clone(),
+        cn.unique_name.to_string(),
         cn.data.arrow_data_type().clone(),
         false,
     );

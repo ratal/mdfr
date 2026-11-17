@@ -17,7 +17,7 @@ pub fn export_to_csv(mdf: &Mdf, file_name: &str) -> Result<()> {
     match &mdf.mdf_info {
         MdfInfo::V4(mdfinfo4) => {
             for dg in mdfinfo4.dg.values() {
-                if dg.cg.values().any(|cg| !cg.channel_names.is_empty()) {
+                if dg.cg.values().any(|cg| !cg.cn.is_empty()) {
                     // Collect CGs to export in parallel
                     let cg_refs: Vec<(&u64, &Cg4)> = dg.cg.iter().collect();
                     cg_refs.par_iter().try_for_each(|(rec_id, cg)| {
@@ -74,10 +74,15 @@ fn mdf4_cg_to_csv(file_name: &str, _mdfinfo4: &MdfInfo4, rec_id: u64, cg: &Cg4) 
         .cn
         .values()
         .filter(|cn| !cn.data.is_empty())
-        .map(|cn| (cn.unique_name.as_str(), cn.data.finish_cloned()))
+        .map(|cn| (cn.unique_name.as_ref(), cn.data.finish_cloned()))
         .collect();
     if !channels.is_empty() {
-        write_csv(file_name, cg.master_channel_name.clone(), rec_id, &channels)?;
+        write_csv(
+            file_name,
+            cg.master_channel_name.as_deref().map(str::to_string),
+            rec_id,
+            &channels,
+        )?;
     }
     Ok(())
 }
@@ -87,12 +92,12 @@ fn mdf3_cg_to_csv(file_name: &str, _mdfinfo3: &MdfInfo3, rec_id: u16, cg: &Cg3) 
         .cn
         .values()
         .filter(|cn: &&Cn3| !cn.data.is_empty())
-        .map(|cn| (cn.unique_name.as_str(), cn.data.finish_cloned()))
+        .map(|cn| (cn.unique_name.as_ref(), cn.data.finish_cloned()))
         .collect();
     if !channels.is_empty() {
         write_csv(
             file_name,
-            cg.master_channel_name.clone(),
+            cg.master_channel_name.as_deref().map(str::to_string),
             u64::from(rec_id),
             &channels,
         )?;
