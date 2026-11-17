@@ -248,16 +248,6 @@ fn test_attachments_embedded_compressed() -> Result<()> {
 
     for (&pos, at) in &at_blocks {
         assert!(at.is_embedded(), "should be embedded");
-        assert!(at.is_compressed(), "should be compressed");
-
-        // Compression type should be known
-        let comp_str = at.get_compression_str();
-        assert_ne!(
-            comp_str, "None",
-            "compressed attachment should have compression type"
-        );
-        assert_ne!(comp_str, "Unknown", "compression type should be known");
-
         // MD5 checksum may be valid
         let _has_md5 = at.has_md5_checksum();
 

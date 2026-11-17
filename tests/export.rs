@@ -88,6 +88,7 @@ fn export_to_hdf5() -> Result<()> {
 #[cfg(feature = "parquet")]
 #[test]
 fn export_and_verify_parquet() -> Result<()> {
+    use arrow::array::Array;
     if !std::path::Path::new(BASE_PATH_MDF4.as_str()).is_dir() {
         return Ok(());
     }
@@ -121,6 +122,7 @@ fn export_and_verify_parquet() -> Result<()> {
 
     let mut total_rows = 0;
     let mut first_val: Option<f64> = None;
+    let mut first_is_null: Option<bool> = None;
 
     for batch in reader {
         let batch = batch?;
@@ -135,6 +137,7 @@ fn export_and_verify_parquet() -> Result<()> {
                 .downcast_ref::<arrow::array::Float64Array>()
                 .unwrap();
             if first_val.is_none() && !float_col.is_empty() {
+                first_is_null = Some(float_col.is_null(0));
                 first_val = Some(float_col.value(0));
             }
         }
@@ -146,7 +149,10 @@ fn export_and_verify_parquet() -> Result<()> {
     if let mdfr::data_holder::channel_data::ChannelData::Float64(b) = orig_data {
         let arr = b;
         if !arr.is_empty() {
-            assert_eq!(first_val.unwrap(), arr.value(0));
+            assert_eq!(first_is_null.unwrap(), arr.is_null(0));
+            if !arr.is_null(0) {
+                assert_eq!(first_val.unwrap(), arr.value(0));
+            }
         }
     } else {
         panic!("Expected Float64 channel");

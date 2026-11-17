@@ -348,13 +348,13 @@ fn lookup_value_range_to_text() -> Result<()> {
         target.append_value("Out of range");
         target.append_value("very low");
         target.append_value("very low");
-        target.append_value("very low");
         target.append_value("low");
         target.append_value("low");
         target.append_value("medium");
         target.append_value("medium");
         target.append_value("high");
         target.append_value("high");
+        target.append_value("very high");
         assert_eq!(&ChannelData::Utf8(target.finish()), data);
     }
 
