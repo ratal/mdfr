@@ -862,6 +862,10 @@ pub fn mdfwriter4(
                     if let Some(cg) = dg.cg.get_mut(&cg_id) {
                         if has_inval {
                             cg.block.cg_inval_bytes = 1;
+                            for cn in cg.cn.values_mut() {
+                                cn.block.cn_flags |= CN_F_INVALID;
+                                cn.block.cn_inval_bit_pos = 0;
+                            }
                         }
                         if let Some(cn) = cg.cn.get_mut(&cn_pos) {
                             cn.block.cn_data = sd_pos;
@@ -888,6 +892,10 @@ pub fn mdfwriter4(
                     dg.block.dg_data = pos;
                     if has_inval && let Some(cg) = dg.cg.get_mut(&cg_id) {
                         cg.block.cg_inval_bytes = 1;
+                        for cn in cg.cn.values_mut() {
+                            cn.block.cn_flags |= CN_F_INVALID;
+                            cn.block.cn_inval_bit_pos = 0;
+                        }
                     }
                 }
             }
@@ -1774,6 +1782,11 @@ fn create_blocks(
 
         dg_block.dg_dg_next = pointer;
         // saves the blocks in the mdfinfo4 structure
+        let invalid_mask = crate::mdfinfo::mdfinfo4::build_invalid_mask(
+            &cn_block,
+            cg_block.cg_inval_bytes,
+            cg_block.cg_cycle_count as usize,
+        );
         let new_cn = Cn4 {
             header: cn_block_header,
             unique_name: cn.unique_name.clone(),
@@ -1794,7 +1807,7 @@ fn create_blocks(
             composition,
             list_size: cn.list_size,
             shape: cn.shape.clone(),
-            invalid_mask: None,
+            invalid_mask,
             event_template: None,
             should_read: false,
             builder: None,

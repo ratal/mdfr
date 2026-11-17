@@ -13,20 +13,17 @@ use anyhow::{Context, Result};
 use log::info;
 use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 
 use super::Dg4;
-use crate::mdfinfo::sym_buf_reader::SymBufReader;
+use crate::mdfinfo::sym_buf_reader::SliceCursor;
 use mdfr_core::logger::recover::{IoReadSeek, recover_in_place, scan_unfinalized_counts};
 
 /// Fixes `cg_cycle_count` (bit 0), VLSD/VLSC `cg_data_bytes`/`cg_inval_bytes` (bits 5–8),
 /// and unpatched `DLBLOCK` pointers in memory based on the actual data available in the file.
 ///
 /// Returns the number of channel groups whose cycle/byte count was corrected.
-pub fn fix_cycle_counts(
-    dg: &mut BTreeMap<i64, Dg4>,
-    rdr: &mut SymBufReader<&File>,
-) -> Result<usize> {
+pub fn fix_cycle_counts(dg: &mut BTreeMap<i64, Dg4>, rdr: &mut SliceCursor<'_>) -> Result<usize> {
     let file_size = rdr
         .file_size()
         .context("finalize: could not determine file size")?;
@@ -110,6 +107,7 @@ mod tests {
     use mdfr_core::compress::CompressionAlgorithm;
     use mdfr_core::logger::{DataLayout, Logger, LoggerBuilder};
     use mdfr_core::time::ManualClock;
+    use std::fs::File;
     use std::io::Read;
 
     #[test]

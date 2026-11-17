@@ -5,12 +5,11 @@
 use crate::data_holder::channel_data::{ChannelData, data_type_init};
 use crate::data_holder::tensor_arrow::Order;
 use crate::mdfinfo::block_chain::BlockChain;
-use crate::mdfinfo::sym_buf_reader::SymBufReader;
+use crate::mdfinfo::sym_buf_reader::SliceCursor;
 use anyhow::{Context, Error, Result};
 use arrow::array::{BooleanBufferBuilder, UInt8Array, UInt16Array, UInt32Array};
 use rustc_hash::FxHashMap;
 use std::fmt::{self, Display};
-use std::fs::File;
 
 use super::block_header_impl::{
     Blockheader4Short, SharableBlocks, default_short_header, parse_block_short, read_meta_data,
@@ -204,7 +203,7 @@ fn merge_parsed_cn4(
 
 /// creates recursively in the channel group the CN blocks and all its other linked blocks (CC, MD, TX, CA, etc.)
 pub(super) fn parse_cn4(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: i64,
     mut position: i64,
     sharable: &mut SharableBlocks,
@@ -474,7 +473,7 @@ fn can_open_time(
 }
 
 /// Builds the invalidation validity bitmap mask for a channel given `cg_inval_bytes` and `cycles`.
-pub(super) fn build_invalid_mask(
+pub(crate) fn build_invalid_mask(
     block: &Cn4Block,
     cg_inval_bytes: u32,
     cycles: usize,
@@ -689,7 +688,7 @@ impl Cn4 {
 
 /// Channel block parser
 pub(super) fn parse_cn4_block(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: i64,
     mut position: i64,
     sharable: &mut SharableBlocks,
@@ -824,21 +823,25 @@ pub(super) fn parse_cn4_block(
     // Read template EVBLOCK for event signal channels (cn_flags bit 13 set)
     // For event signal channels, cn_data points to a template EVBLOCK that describes
     // the structure of event data stored in this channel
-    let event_template: Option<Ev4Block> =
-        if (block.cn_flags & CN_F_EVENT_SIGNAL) != 0 && block.cn_data > 0 {
-            let (ev_block, pos) = parse_ev4_block(rdr, block.cn_data, position)?;
-            position = read_meta_data(rdr, sharable, ev_block.ev_tx_name, pos, BlockType::EV)?;
-            position = read_meta_data(
-                rdr,
-                sharable,
-                ev_block.ev_md_comment,
-                position,
-                BlockType::EV,
-            )?;
-            Some(ev_block)
-        } else {
-            None
-        };
+    let event_template: Option<Ev4Block> = if (block.cn_flags & CN_F_EVENT_SIGNAL) != 0
+        && block.cn_data > 0
+        && block.cn_type != 1
+        && block.cn_type != 5
+        && block.cn_type != 7
+    {
+        let (ev_block, pos) = parse_ev4_block(rdr, block.cn_data, position)?;
+        position = read_meta_data(rdr, sharable, ev_block.ev_tx_name, pos, BlockType::EV)?;
+        position = read_meta_data(
+            rdr,
+            sharable,
+            ev_block.ev_md_comment,
+            position,
+            BlockType::EV,
+        )?;
+        Some(ev_block)
+    } else {
+        None
+    };
 
     let cn_struct = Cn4 {
         header: cnheader,

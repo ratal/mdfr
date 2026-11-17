@@ -10,7 +10,6 @@
 use anyhow::{Context, Result, bail};
 use rustc_hash::FxHashMap;
 use std::fmt::{self, Display};
-use std::fs::File;
 
 use super::block_header_impl::{SharableBlocks, parse_block_short};
 use super::ca_impl::{Ca4Block, parse_ca_block};
@@ -18,7 +17,7 @@ use super::cc_impl::read_cc;
 use super::cn_impl::{Cn4, CnType, RecordLayout, parse_cn4};
 use crate::data_holder::tensor_arrow::Order;
 use crate::mdfinfo::block_chain::BlockChain;
-use crate::mdfinfo::sym_buf_reader::SymBufReader;
+use crate::mdfinfo::sym_buf_reader::SliceCursor;
 
 pub use mdfr_core::blocks::composition_block::*;
 
@@ -80,7 +79,7 @@ impl Display for Composition {
 /// All member/option channels share the same byte offset in the record,
 /// so they are re-keyed using negative block_position to avoid HashMap collisions.
 fn parse_and_rekey_channels(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     targets: &[i64],
     position: &mut i64,
     sharable: &mut SharableBlocks,
@@ -111,7 +110,7 @@ fn parse_and_rekey_channels(
 /// parses composition linked blocks
 /// CN (structures of composed channels )and CA (array of arrays) blocks can be nested or even CA and CN nested and mixed: this is not supported, very complicated
 pub(super) fn parse_composition(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: i64,
     position: i64,
     sharable: &mut SharableBlocks,
@@ -131,7 +130,7 @@ pub(super) fn parse_composition(
 }
 
 fn parse_composition_inner(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: i64,
     mut position: i64,
     sharable: &mut SharableBlocks,

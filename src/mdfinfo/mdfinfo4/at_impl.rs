@@ -6,29 +6,28 @@ use anyhow::{Context, Result, bail};
 use log::warn;
 use md5::{Digest, Md5};
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 
 use super::block_header_impl::{SharableBlocks, read_meta_data};
 use super::data_impl::decompress_data;
 use super::metadata::BlockType;
 use crate::mdfinfo::block_chain::BlockChain;
-use crate::mdfinfo::sym_buf_reader::SymBufReader;
+use crate::mdfinfo::sym_buf_reader::SliceCursor;
 
 pub use mdfr_core::blocks::at_block::At4Block;
 
 /// At4 (Attachment) block struct parser
 fn parser_at4_block(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: i64,
     mut position: i64,
 ) -> Result<(At4Block, Option<Vec<u8>>, i64)> {
     rdr.seek_relative(target - position)
         .context("Could not reach At4 Block position")?;
-    let mut buf = [0u8; 96];
-    rdr.read_exact(&mut buf)
+    let slice = rdr
+        .read_slice(96)
         .context("Could not read At4 Block buffer")?;
-    let mut block = Cursor::new(buf);
+    let mut block = Cursor::new(slice);
     let mut block: At4Block = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not parse At4 Block buffer into At4Block struct")?;
     position = target + 96;
@@ -43,27 +42,28 @@ fn parser_at4_block(
                 block.at_embedded_size
             );
         }
-        let mut embedded_data = vec![0u8; block.at_embedded_size as usize];
-        rdr.read_exact(&mut embedded_data)
+        let raw_slice = rdr
+            .read_slice(block.at_embedded_size as usize)
             .context("Could not parse At4Block embedded attachement")?;
 
         let orig_embedded_size = block.at_embedded_size as i64;
         let zip_type = block.at_zip_type;
-        if (block.at_flags & 0b10) > 0 {
-            let compressed = embedded_data.clone();
-            match decompress_data(zip_type, 0, embedded_data, block.at_original_size) {
+        let embedded_data = if (block.at_flags & 0b10) > 0 {
+            match decompress_data(zip_type, 0, raw_slice, block.at_original_size) {
                 Ok(decompressed) => {
-                    embedded_data = decompressed;
                     block.at_flags &= !0b10;
-                    block.at_embedded_size = embedded_data.len() as u64;
+                    block.at_embedded_size = decompressed.len() as u64;
                     block.at_len = 96 + block.at_embedded_size;
+                    decompressed
                 }
                 Err(_) => {
                     warn!("Failed to decompress attachment data, storing raw data");
-                    embedded_data = compressed;
+                    raw_slice.to_vec()
                 }
             }
-        }
+        } else {
+            raw_slice.to_vec()
+        };
 
         // MD5 Checksum verification
         if (block.at_flags & 0b100) > 0 {
@@ -90,7 +90,7 @@ pub type At = HashMap<i64, (At4Block, Option<Vec<u8>>)>;
 
 /// parses Attachment blocks along with its linked comments, returns a hashmap of At4 block and attached data in a vect
 pub fn parse_at4(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     sharable: &mut SharableBlocks,
     target: i64,
     mut position: i64,

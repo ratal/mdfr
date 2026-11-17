@@ -6,23 +6,22 @@
 use anyhow::{Context, Result};
 use rustc_hash::FxHashMap;
 use std::fmt;
-use std::fs::File;
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 
 use super::cc_impl::Cc4Block;
 use super::metadata::{BlockType, HdComment, MdComment, MetaData, MetaDataBlockType};
 use super::si_impl::Si4Block;
-use crate::mdfinfo::sym_buf_reader::SymBufReader;
+use crate::mdfinfo::sym_buf_reader::SliceCursor;
 
 pub use mdfr_core::blocks::header::{Blockheader4, Blockheader4Short};
 
 /// parse the block header and its fields id, (reserved), length and number of links
 #[inline]
-pub fn parse_block_header(rdr: &mut SymBufReader<&File>) -> Result<Blockheader4> {
-    let mut buf = [0u8; 24];
-    rdr.read_exact(&mut buf)
+pub fn parse_block_header(rdr: &mut SliceCursor<'_>) -> Result<Blockheader4> {
+    let slice = rdr
+        .read_slice(24)
         .context("could not read blockheader4 Id")?;
-    let mut block = Cursor::new(buf);
+    let mut block = Cursor::new(slice);
     let header: Blockheader4 =
         binrw::BinReaderExt::read_le(&mut block).context("binread could not parse blockheader4")?;
     Ok(header)
@@ -50,11 +49,11 @@ pub fn default_short_header(variant: BlockType) -> Blockheader4Short {
 
 /// parse the block header and its fields id, (reserved), length except the number of links
 #[inline]
-pub(super) fn parse_block_header_short(rdr: &mut SymBufReader<&File>) -> Result<Blockheader4Short> {
-    let mut buf = [0u8; 16];
-    rdr.read_exact(&mut buf)
+pub(super) fn parse_block_header_short(rdr: &mut SliceCursor<'_>) -> Result<Blockheader4Short> {
+    let slice = rdr
+        .read_slice(16)
         .context("could not read short blockheader4 Id")?;
-    let mut block = Cursor::new(buf);
+    let mut block = Cursor::new(slice);
     let header: Blockheader4Short =
         binrw::BinReaderExt::read_le(&mut block).context("could not parse short blockheader4")?;
     Ok(header)
@@ -62,11 +61,11 @@ pub(super) fn parse_block_header_short(rdr: &mut SymBufReader<&File>) -> Result<
 
 /// reads generically a block header and return links and members section part into a Seek buffer for further processing
 #[inline]
-pub(super) fn parse_block(
-    rdr: &mut SymBufReader<&File>,
+pub(super) fn parse_block<'a>(
+    rdr: &mut SliceCursor<'a>,
     target: i64,
     mut position: i64,
-) -> Result<(Cursor<Vec<u8>>, Blockheader4, i64)> {
+) -> Result<(Cursor<&'a [u8]>, Blockheader4, i64)> {
     // Reads block header
     rdr.seek_relative(target - position)
         .context("Could not reach block header position")?; // change buffer position
@@ -77,22 +76,22 @@ pub(super) fn parse_block(
         .validate_len(file_size)
         .context("block header length validation failed")?;
 
-    // Reads in buffer rest of block
-    let mut buf = vec![0u8; (block_header.hdr_len - 24) as usize];
-    rdr.read_exact(&mut buf)
+    // Borrows rest of block directly from mapped slice
+    let slice = rdr
+        .read_slice((block_header.hdr_len - 24) as usize)
         .context("Could not read rest of block after header")?;
     position = target + block_header.hdr_len as i64;
-    let block = Cursor::new(buf);
+    let block = Cursor::new(slice);
     Ok((block, block_header, position))
 }
 
 /// reads generically a block header wihtout the number of links and returns links and members section part into a Seek buffer for further processing
 #[inline]
-pub(super) fn parse_block_short(
-    rdr: &mut SymBufReader<&File>,
+pub(super) fn parse_block_short<'a>(
+    rdr: &mut SliceCursor<'a>,
     target: i64,
     mut position: i64,
-) -> Result<(Cursor<Vec<u8>>, Blockheader4Short, i64)> {
+) -> Result<(Cursor<&'a [u8]>, Blockheader4Short, i64)> {
     // Reads block header
     rdr.seek_relative(target - position)
         .context("Could not reach block short header position")?; // change buffer position
@@ -104,18 +103,18 @@ pub(super) fn parse_block_short(
         .validate_len(file_size)
         .context("short block header length validation failed")?;
 
-    // Reads in buffer rest of block
-    let mut buf = vec![0u8; (block_header.hdr_len - 16) as usize];
-    rdr.read_exact(&mut buf)
+    // Borrows rest of block directly from mapped slice
+    let slice = rdr
+        .read_slice((block_header.hdr_len - 16) as usize)
         .context("Could not read rest of block after short header")?;
     position = target + block_header.hdr_len as i64;
-    let block = Cursor::new(buf);
+    let block = Cursor::new(slice);
     Ok((block, block_header, position))
 }
 
 /// Parses the MD or TX block
 pub(super) fn read_meta_data(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     sharable: &mut SharableBlocks,
     target: i64,
     mut position: i64,
@@ -132,7 +131,7 @@ pub(super) fn read_meta_data(
         };
         let md = MetaData {
             block,
-            raw_data: raw_data.into_inner(),
+            raw_data: raw_data.into_inner().to_vec(),
             block_type,
             parent_block_type,
             md_comment: None,

@@ -1,6 +1,6 @@
 [package]
 name = "mdfr-derive"
-version = "0.8.4"
+version = "0.8.5"
 description = "Proc-macro derive for #[derive(MdfRecord)] in mdfr-core"
 authors = ["ratal <ratal@ratal.org>"]
 edition = "2024"
@@ -15,5 +15,4 @@ proc-macro = true
 [dependencies]
 proc-macro2 = "1.0.106"
 quote = "1.0.45"
-syn = "2.0.117"
-
+syn = "3.0.10"

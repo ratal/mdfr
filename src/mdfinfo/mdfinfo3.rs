@@ -10,7 +10,6 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::default::Default;
 use std::fmt;
-use std::fs::File;
 use std::io::{Cursor, prelude::*};
 
 use crate::data_holder::channel_data::{ChannelData, data_type_init};
@@ -19,7 +18,7 @@ use crate::mdfinfo::IdBlock;
 use crate::mdfinfo::block_chain::BlockChain;
 use crate::mdfinfo::mdfinfo4::Endianness;
 
-use super::sym_buf_reader::SymBufReader;
+use super::sym_buf_reader::SliceCursor;
 
 /// Specific to version 3.x mdf metadata structure
 #[derive(Debug)]
@@ -508,7 +507,7 @@ pub struct Blockheader3 {
 }
 
 /// Generic block header parser
-pub fn parse_block_header(rdr: &mut SymBufReader<&File>) -> Result<Blockheader3> {
+pub fn parse_block_header(rdr: &mut SliceCursor<'_>) -> Result<Blockheader3> {
     let header: Blockheader3 =
         binrw::BinReaderExt::read_le(rdr).context("Could not read Blockheader3 struct")?;
     Ok(header)
@@ -585,14 +584,12 @@ pub struct Hd3Block32 {
 
 /// Header block parser
 pub fn hd3_parser(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     ver: u16,
     encoding: &'static Encoding,
 ) -> Result<(Hd3, i64)> {
-    let mut buf = [0u8; 164];
-    rdr.read_exact(&mut buf)
-        .context("Could not read hd3 buffer")?;
-    let mut block = Cursor::new(buf);
+    let slice = rdr.read_slice(164).context("Could not read hd3 buffer")?;
+    let mut block = Cursor::new(slice);
     let block: Hd3Block = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not read buffer into Hd3Block struct")?;
     let datestr: String = encoding.decode(&block.hd_date).0.into();
@@ -657,10 +654,10 @@ pub fn hd3_parser(
     let hd_time_identifier: Option<String>;
     let position: i64;
     if ver >= 320 {
-        let mut buf = [0u8; 44];
-        rdr.read_exact(&mut buf)
+        let slice = rdr
+            .read_slice(44)
             .context("Could not read buffer for Hd3Block32")?;
-        let mut block = Cursor::new(buf);
+        let mut block = Cursor::new(slice);
         let block: Hd3Block32 = binrw::BinReaderExt::read_le(&mut block)
             .context("Could not read buffer into Hd3Block32 struct")?;
         let ti = encoding.decode(&block.hd_time_identifier).0;
@@ -755,7 +752,7 @@ impl fmt::Display for Hd3 {
 
 /// Header comment parser
 pub fn hd3_comment_parser(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     hd3_block: &Hd3,
     mut position: i64,
     encoding: &'static Encoding,
@@ -767,7 +764,7 @@ pub fn hd3_comment_parser(
 
 /// TX text block parser, contexting ISO_8859_1 encoded text
 pub fn parse_tx(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: u32,
     position: i64,
     encoding: &'static Encoding,
@@ -782,11 +779,11 @@ pub fn parse_tx(
         );
     }
 
-    // reads comment
-    let mut comment_raw = vec![0; (block_header.hdr_len - 4) as usize];
-    rdr.read_exact(&mut comment_raw)
+    // borrows comment slice
+    let comment_raw = rdr
+        .read_slice((block_header.hdr_len - 4) as usize)
         .context("Could not read comment raw data")?;
-    let (comment, _encoding, error_flag) = encoding.decode(&comment_raw);
+    let (comment, _encoding, error_flag) = encoding.decode(comment_raw);
     let comment: String = comment.trim_end_matches(char::from(0)).to_string();
     if error_flag {
         info!("errors reading {comment}");
@@ -822,16 +819,16 @@ pub struct Dg3Block {
 
 /// Data Group block parser
 pub fn parse_dg3_block(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: u32,
     position: i64,
 ) -> Result<(Dg3Block, i64)> {
     rdr.seek_relative(target as i64 - position)
         .context("Could not reach position of Dg3 block")?;
-    let mut buf = [0u8; 24];
-    rdr.read_exact(&mut buf)
+    let slice = rdr
+        .read_slice(24)
         .context("Could not read Dg3 Block buffer")?;
-    let mut block = Cursor::new(buf);
+    let mut block = Cursor::new(slice);
     let block: Dg3Block = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not read buffer into Dg3Block structure")?;
     Ok((block, (target + 24).into()))
@@ -851,7 +848,7 @@ pub struct Dg3 {
 
 /// Parser for Dg3 and all linked blocks (cg, cn, cc)
 pub fn parse_dg3(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: u32,
     mut position: i64,
     sharable: &mut SharableBlocks3,
@@ -946,7 +943,7 @@ pub struct Cg3Block {
 
 /// Cg3 (Channel Group) block struct parser with linked comments Source Information in sharable blocks
 fn parse_cg3_block(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: u32,
     mut position: i64,
     sharable: &mut SharableBlocks3,
@@ -956,10 +953,10 @@ fn parse_cg3_block(
 ) -> Result<(Cg3, i64, u16)> {
     rdr.seek_relative(target as i64 - position)
         .context("Could not reach position of Cg3Block")?; // change buffer position
-    let mut buf = vec![0u8; 30];
-    rdr.read_exact(&mut buf)
+    let slice = rdr
+        .read_slice(30)
         .context("Could not read Cg3Block buffer")?;
-    let mut block = Cursor::new(buf);
+    let mut block = Cursor::new(slice);
     let cg: Cg3Block = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not read buffer into Cg3Block structure")?;
     position = target as i64 + 30;
@@ -1006,7 +1003,7 @@ pub struct Cg3 {
 
 /// Cg3 blocks and linked blocks parsing
 pub fn parse_cg3(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: u32,
     mut position: i64,
     sharable: &mut SharableBlocks3,
@@ -1157,7 +1154,7 @@ impl Cn3 {
 
 /// creates recursively in the channel group the CN blocks and all its other linked blocks (CC, TX, CE, CD)
 pub fn parse_cn3(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     mut target: u32,
     mut position: i64,
     sharable: &mut SharableBlocks3,
@@ -1257,7 +1254,7 @@ pub struct Cn3Block2 {
 /// CN3 Block parsing
 #[allow(clippy::too_many_arguments)]
 fn parse_cn3_block(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: u32,
     mut position: i64,
     sharable: &mut SharableBlocks3,
@@ -1268,14 +1265,26 @@ fn parse_cn3_block(
 ) -> Result<(Cn3, i64)> {
     rdr.seek_relative(target as i64 - position)
         .context("Could not reach position of CN Block")?; // change buffer position
-    let mut buf = vec![0u8; 228];
-    rdr.read_exact(&mut buf)
+    let hdr = rdr
+        .read_slice(4)
+        .context("Could not read Cn3 block header")?;
+    let cn_len = u16::from_le_bytes([hdr[2], hdr[3]]) as usize;
+    let mut buf = [0u8; 228];
+    buf[..4].copy_from_slice(hdr);
+    let to_read = cn_len.saturating_sub(4).min(224);
+    let body = rdr
+        .read_slice(to_read)
         .context("Could not read Cn3 block buffer")?;
-    position = target as i64 + 228;
-    let mut block = Cursor::new(buf);
+    buf[4..4 + to_read].copy_from_slice(body);
+    if cn_len > 228 {
+        rdr.seek_relative((cn_len - 228) as i64)
+            .context("Could not skip trailing Cn3 block bytes")?;
+    }
+    position = target as i64 + cn_len.max(4) as i64;
+    let mut block = Cursor::new(&buf[..]);
     let block1: Cn3Block1 = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not read buffer into Cn3Block1 structure")?;
-    let mut desc = vec![0u8; 128];
+    let mut desc = [0u8; 128];
     block
         .read_exact(&mut desc)
         .context("Could not read channel description")?;
@@ -1666,7 +1675,7 @@ pub enum Conversion {
 
 /// Parser for channel conversion blocks
 pub fn parse_cc3_block(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: u32,
     mut position: i64,
     sharable: &mut SharableBlocks3,
@@ -1674,11 +1683,11 @@ pub fn parse_cc3_block(
 ) -> Result<(i64, Cc3Block)> {
     rdr.seek_relative(target as i64 - position)
         .context("Could not reach CC Block position")?; // change buffer position
-    let mut buf = vec![0u8; 46];
-    rdr.read_exact(&mut buf)
+    let slice = rdr
+        .read_slice(46)
         .context("Could not read Cc3Block buffer")?;
     position = target as i64 + 46;
-    let mut block = Cursor::new(buf);
+    let mut block = Cursor::new(slice);
     let cc_block: Cc3Block = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not read buffer into Cc3Block structure")?;
     let conversion: Conversion;
@@ -1859,7 +1868,7 @@ pub struct CanBlock {
 
 /// parses Channel Extension block
 fn parse_ce(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: u32,
     mut position: i64,
     sharable: &mut SharableBlocks3,
@@ -1867,11 +1876,11 @@ fn parse_ce(
 ) -> Result<i64> {
     rdr.seek_relative(target as i64 - position)
         .context("Could not reach CE block position")?; // change buffer position
-    let mut buf = vec![0u8; 6];
-    rdr.read_exact(&mut buf)
+    let slice = rdr
+        .read_slice(6)
         .context("Could not read buffer for CE Block")?;
     position = target as i64 + 6;
-    let mut block = Cursor::new(buf);
+    let mut block = Cursor::new(slice);
     let ce_id: [u8; 2] =
         binrw::BinReaderExt::read_le(&mut block).context("could not read ce_id")?;
     let ce_len: u16 = binrw::BinReaderExt::read_le(&mut block).context("could not read ce_len")?;
@@ -1880,22 +1889,22 @@ fn parse_ce(
 
     let ce_extension: CeSupplement = if ce_extension_type == 0x02 {
         // Reads DIM
-        let mut buf = vec![0u8; 118];
-        rdr.read_exact(&mut buf)
+        let slice = rdr
+            .read_slice(118)
             .context("Could not DIM Supplement buffer")?;
         position += 118;
-        let mut block = Cursor::new(buf);
+        let mut block = Cursor::new(slice);
         let ce_module_number: u16 =
             binrw::BinReaderExt::read_le(&mut block).context("could not read ce_module_number")?;
         let ce_address: u32 =
             binrw::BinReaderExt::read_le(&mut block).context("could not read ce_address")?;
-        let mut desc = vec![0u8; 80];
+        let mut desc = [0u8; 80];
         block
             .read_exact(&mut desc)
             .context("Could not read DIM description")?;
         let mut ce_desc: String = encoding.decode(&desc).0.into();
         ce_desc = ce_desc.trim_end_matches(char::from(0)).to_string();
-        let mut ecu_id = vec![0u8; 32];
+        let mut ecu_id = [0u8; 32];
         block
             .read_exact(&mut ecu_id)
             .context("Could not read DIM ecu_id")?;
@@ -1909,22 +1918,22 @@ fn parse_ce(
         })
     } else if ce_extension_type == 19 {
         // Reads CAN
-        let mut buf = vec![0u8; 80];
-        rdr.read_exact(&mut buf)
+        let slice = rdr
+            .read_slice(80)
             .context("Could not CAN Supplement buffer")?;
         position += 80;
-        let mut block = Cursor::new(buf);
+        let mut block = Cursor::new(slice);
         let ce_can_id: u32 =
             binrw::BinReaderExt::read_le(&mut block).context("Could not read CAN ce_can_id")?;
         let ce_can_index: u32 =
             binrw::BinReaderExt::read_le(&mut block).context("Could not read CAN ce_can_index")?;
-        let mut message = vec![0u8; 36];
+        let mut message = [0u8; 36];
         block
             .read_exact(&mut message)
             .context("Could not read CAN Supplement message")?;
         let mut ce_message_name: String = encoding.decode(&message).0.into();
         ce_message_name = ce_message_name.trim_end_matches(char::from(0)).to_string();
-        let mut sender = vec![0u8; 32];
+        let mut sender = [0u8; 32];
         block
             .read_exact(&mut sender)
             .context("Could not read CAN Supplement sender")?;

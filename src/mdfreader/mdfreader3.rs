@@ -3,10 +3,9 @@ use rayon::prelude::*;
 
 use crate::mdfinfo::MdfInfo;
 use crate::mdfinfo::mdfinfo3::{Cg3, Cn3, Dg3};
+use crate::mdfinfo::sym_buf_reader::SliceCursor;
 use anyhow::{Context, Error, Result};
 use std::collections::{HashMap, HashSet};
-use std::fs::File;
-use std::io::{BufReader, Read};
 
 use crate::data_holder::channel_builder::ChannelBuilder;
 use crate::mdfreader::data_read3::read_channels_from_bytes;
@@ -21,7 +20,7 @@ pub const CHUNK_SIZE_READING_3: usize = 524288; // can be tuned according to arc
 /// Reads the file data based on headers information contained in info parameter
 /// Hashset of channel names parameter allows to filter which channels to read
 pub fn mdfreader3<'a>(
-    rdr: &'a mut BufReader<&File>,
+    rdr: &'a mut SliceCursor<'a>,
     mdf: &'a mut Mdf,
     channel_names: &HashSet<String>,
 ) -> Result<(), Error> {
@@ -120,21 +119,21 @@ fn generate_chunks(channel_group: &Cg3) -> Vec<(usize, usize)> {
 
 /// Reads all channels from given channel group having sorted data blocks
 fn read_all_channels_sorted(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     channel_group: &mut Cg3,
 ) -> Result<(), Error> {
     let chunks = generate_chunks(channel_group);
     // initialises the arrays
     initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone())
         .context("failed initialising arrays for sorted channels")?;
-    // read by chunks and store in channel array
+    // read by chunks directly from mapped slice and store in channel array
     let mut previous_index: usize = 0;
     for (n_record_chunk, chunk_size) in chunks {
-        let mut data_chunk = vec![0u8; chunk_size];
-        rdr.read_exact(&mut data_chunk)
+        let data_chunk = rdr
+            .read_slice(chunk_size)
             .context("Could not read data chunk")?;
         read_channels_from_bytes(
-            &data_chunk,
+            data_chunk,
             &mut channel_group.cn,
             channel_group.record_length as usize,
             previous_index,
@@ -151,14 +150,16 @@ fn read_all_channels_sorted(
     Ok(())
 }
 
-/// Reads unsorted data block chunk by chunk
+/// Reads unsorted data block chunk by chunk directly from mapped slice
 fn read_all_channels_unsorted(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     dg: &mut Dg3,
     block_length: i64,
 ) -> Result<()> {
     let data_block_length = block_length as usize;
-    let mut position: usize = 0;
+    let data = rdr
+        .read_slice(data_block_length)
+        .context("Could not read data chunk")?;
     let mut record_counter: HashMap<u16, (usize, Vec<u8>)> = HashMap::new();
 
     // initialise record counter that will contain sorted data blocks for each channel group
@@ -166,23 +167,26 @@ fn read_all_channels_unsorted(
         record_counter.insert(cg.block.cg_record_id, (0, Vec::new()));
     }
 
-    let mut trailing_buf: Vec<u8> = Vec::new();
-
-    while position < data_block_length {
-        let to_read = (data_block_length - position).min(CHUNK_SIZE_READING_3);
-        let mut read_buf = vec![0u8; to_read];
-        rdr.read_exact(&mut read_buf)
-            .context("Could not read data chunk")?;
-        position += to_read;
-
-        let mut data_chunk = Vec::with_capacity(trailing_buf.len() + read_buf.len());
-        data_chunk.extend_from_slice(&trailing_buf);
-        data_chunk.extend_from_slice(&read_buf);
-
-        read_all_channels_unsorted_from_bytes(&mut data_chunk, dg, &mut record_counter)
+    let mut offset: usize = 0;
+    while offset < data.len() {
+        let mut window_end = (offset + CHUNK_SIZE_READING_3).min(data.len());
+        loop {
+            let consumed = read_all_channels_unsorted_from_bytes(
+                &data[offset..window_end],
+                dg,
+                &mut record_counter,
+            )
             .context("failed reading channels from bytes")?;
-
-        trailing_buf = data_chunk; // Preserves unconsumed trailing bytes for next chunk
+            if consumed > 0 {
+                offset += consumed;
+                break;
+            }
+            if window_end == data.len() {
+                offset = data.len();
+                break;
+            }
+            window_end = data.len();
+        }
     }
     for cg in dg.cg.values_mut() {
         apply_bit_mask_offset_3(&mut cg.cn)?;
@@ -197,10 +201,10 @@ fn read_all_channels_unsorted(
 
 /// read record by record from unsorted data block into sorted data block, then copy data into channel arrays
 fn read_all_channels_unsorted_from_bytes(
-    data: &mut Vec<u8>,
+    data: &[u8],
     dg: &mut Dg3,
     record_counter: &mut HashMap<u16, (usize, Vec<u8>)>,
-) -> Result<(), Error> {
+) -> Result<usize, Error> {
     let mut position: usize = 0;
     let data_length = data.len();
     // unsort data into sorted data blocks, except for VLSD CG.
@@ -240,11 +244,6 @@ fn read_all_channels_unsorted_from_bytes(
         remaining = data_length - position;
     }
 
-    // removes consumed records from data and leaves remaining that could not be processed.
-    let remaining_vect = data[position..].to_owned();
-    data.clear(); // removes data but keeps capacity
-    data.extend(remaining_vect);
-
     // From sorted data block, copies data in channels arrays
     for (rec_id, (index, record_data)) in record_counter.iter_mut() {
         if let Some(channel_group) = dg.cg.get_mut(rec_id) {
@@ -258,7 +257,7 @@ fn read_all_channels_unsorted_from_bytes(
             }
         }
     }
-    Ok(())
+    Ok(position)
 }
 
 pub fn apply_bit_mask_offset_3(channels: &mut HashMap<u32, Cn3>) -> Result<(), Error> {

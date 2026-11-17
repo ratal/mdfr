@@ -11,13 +11,12 @@ use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use std::collections::HashSet;
 use std::fmt::{self, Display};
-use std::fs::File;
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 use std::sync::Arc;
 
 use crate::data_holder::channel_data::ChannelData;
 use crate::mdfinfo::block_chain::BlockChain;
-use crate::mdfinfo::sym_buf_reader::SymBufReader;
+use crate::mdfinfo::sym_buf_reader::SliceCursor;
 
 use super::block_header_impl::{
     Blockheader4Short, SharableBlocks, parse_block_header_short, parse_block_short, read_meta_data,
@@ -31,7 +30,7 @@ use mdfr_core::blocks::sr_block::Sr4Block;
 
 /// Cg4 (Channel Group) block struct parser with linked comments Source Information in sharable blocks
 fn parse_cg4_block(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: i64,
     mut position: i64,
     sharable: &mut SharableBlocks,
@@ -109,7 +108,7 @@ fn parse_cg4_block(
 
 /// Parses the linked list of Sample Reduction blocks (SRBLOCK) starting from target
 fn parse_sr4(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: i64,
     mut position: i64,
 ) -> Result<(Vec<Sr4Block>, i64)> {
@@ -124,7 +123,7 @@ fn parse_sr4(
         if !chain.visit(next) {
             break;
         }
-        // Read just the 16-byte header first to validate before allocating
+        // Read just the 16-byte header first to validate before slicing
         rdr.seek_relative(next - position)
             .context("Could not reach SR block header position")?;
         let header: Blockheader4Short =
@@ -138,12 +137,12 @@ fn parse_sr4(
         header
             .validate_len(file_size)
             .context("SR block header length validation failed")?;
-        // Now read the rest of the block
-        let mut buf = vec![0u8; (header.hdr_len - 16) as usize];
-        rdr.read_exact(&mut buf)
+        // Now borrow the rest of the block
+        let slice = rdr
+            .read_slice((header.hdr_len - 16) as usize)
             .context("Could not read SR block body")?;
         position = next + header.hdr_len as i64;
-        let mut block = Cursor::new(buf);
+        let mut block = Cursor::new(slice);
         let sr: Sr4Block = binrw::BinReaderExt::read_le(&mut block)
             .context("Could not read buffer into Sr4Block struct")?;
         next = sr.sr_sr_next;
@@ -730,7 +729,7 @@ fn merge_variant_data_owned(
 
 /// Cg4 blocks and linked blocks parsing
 pub(super) fn parse_cg4(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: i64,
     mut position: i64,
     sharable: &mut SharableBlocks,

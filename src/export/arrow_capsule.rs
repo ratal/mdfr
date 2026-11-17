@@ -7,7 +7,7 @@
 
 use arrow::array::{ArrayData, RecordBatchReader};
 use arrow::ffi::{FFI_ArrowArray, FFI_ArrowSchema, to_ffi};
-use arrow::ffi_stream::{ArrowArrayStreamReader, FFI_ArrowArrayStream};
+use arrow::ffi_stream::{FFI_ArrowArrayStream, RecordBatchStreamReader};
 use pyo3::prelude::*;
 
 /// Destructor for the `arrow_schema` capsule.
@@ -123,10 +123,10 @@ pub fn export_reader_to_pycapsule<'py>(
     Ok(unsafe { Bound::from_owned_ptr(py, capsule) })
 }
 
-/// Imports an [`ArrowArrayStreamReader`] from an `arrow_array_stream` Python Capsule.
+/// Imports a [`RecordBatchStreamReader`] from an `arrow_array_stream` Python Capsule.
 pub fn import_stream_from_pycapsule(
     stream_capsule: &Bound<'_, PyAny>,
-) -> PyResult<ArrowArrayStreamReader> {
+) -> PyResult<RecordBatchStreamReader> {
     unsafe {
         let ptr = pyo3::ffi::PyCapsule_GetPointer(
             stream_capsule.as_ptr(),
@@ -136,7 +136,7 @@ pub fn import_stream_from_pycapsule(
             return Err(PyErr::fetch(stream_capsule.py()));
         }
         let stream = FFI_ArrowArrayStream::from_raw(ptr);
-        ArrowArrayStreamReader::try_new(stream)
+        RecordBatchStreamReader::try_new(stream)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
     }
 }

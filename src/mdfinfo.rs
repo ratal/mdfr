@@ -11,8 +11,6 @@ use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
-use std::fs::{File, OpenOptions};
-use std::io::Read;
 use std::path::PathBuf;
 use std::str;
 use std::sync::Arc;
@@ -40,7 +38,7 @@ use crate::mdfwriter::mdfwriter3::convert3to4;
 
 use self::mdfinfo3::build_channel_db3;
 use self::mdfinfo4::{At4Block, Ch4Block, Ev4Block, FhBlock, Si4Block, Sr4Block};
-use self::sym_buf_reader::SymBufReader;
+use self::sym_buf_reader::{MappedFile, SliceCursor};
 use crate::mdfreader::{DataSignature, MasterSignature};
 
 pub use mdfr_core::blocks::id::*;
@@ -56,21 +54,26 @@ pub enum MdfInfo {
 /// implements MdfInfo creation and manipulation functions
 #[allow(dead_code)]
 impl MdfInfo {
-    /// creates new MdfInfo from file
+    /// creates new MdfInfo from file using memory-mapped zero-copy parsing
     pub fn new(file_name: &str) -> Result<MdfInfo, Error> {
-        let f: File = OpenOptions::new()
-            .read(true)
-            .write(false)
-            .open(file_name)
+        let mapped = MappedFile::open(file_name)
             .with_context(|| format!("Cannot find the file {file_name}"))?;
         info!("Opened file {file_name}");
+        Self::from_bytes_with_name(&mapped, file_name)
+    }
 
-        let mut rdr = SymBufReader::new(&f);
+    /// parses MdfInfo directly from an in-memory byte slice
+    pub fn from_bytes(bytes: &[u8]) -> Result<MdfInfo, Error> {
+        Self::from_bytes_with_name(bytes, "")
+    }
+
+    fn from_bytes_with_name(bytes: &[u8], file_name: &str) -> Result<MdfInfo, Error> {
+        let mut rdr = SliceCursor::new(bytes);
         // Read beginning of ID Block
-        let mut buf = [0u8; 64]; // reserved
-        rdr.read_exact(&mut buf)
+        let slice = rdr
+            .read_slice(64)
             .context("Could not read IdBlock buffer")?;
-        let mut block = Cursor::new(buf);
+        let mut block = Cursor::new(slice);
         let id: IdBlock = binrw::BinReaderExt::read_le(&mut block)
             .context("Could not parse buffer into IdBlock structure")?;
         info!("Read IdBlock");

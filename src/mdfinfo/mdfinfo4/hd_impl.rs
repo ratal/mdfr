@@ -4,12 +4,11 @@
 //! time zone information, and links to DG, FH, CH, AT, and EV blocks.
 use anyhow::{Context, Result};
 use chrono::Local;
-use std::fs::File;
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 
 use super::block_header_impl::{SharableBlocks, read_meta_data};
 use super::metadata::BlockType;
-use crate::mdfinfo::sym_buf_reader::SymBufReader;
+use crate::mdfinfo::sym_buf_reader::SliceCursor;
 
 pub use mdfr_core::blocks::hd::Hd4;
 
@@ -25,14 +24,11 @@ pub fn new_hd4() -> Hd4 {
 
 /// Parses the HDBLOCK at file offset 168 (after the 64-byte ID block + 104-byte HD header).
 /// Also reads the HD metadata comment block (Table 14).
-pub fn hd4_parser(
-    rdr: &mut SymBufReader<&File>,
-    sharable: &mut SharableBlocks,
-) -> Result<(Hd4, i64)> {
-    let mut buf = [0u8; 104];
-    rdr.read_exact(&mut buf)
+pub fn hd4_parser(rdr: &mut SliceCursor<'_>, sharable: &mut SharableBlocks) -> Result<(Hd4, i64)> {
+    let slice = rdr
+        .read_slice(104)
         .context("could not read HD block buffer")?;
-    let mut block = Cursor::new(buf);
+    let mut block = Cursor::new(slice);
     let hd: Hd4 = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not parse HD block buffer into Hd4 struct")?;
     let position = read_meta_data(rdr, sharable, hd.hd_md_comment, 168, BlockType::HD)?;

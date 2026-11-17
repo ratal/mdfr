@@ -331,7 +331,8 @@ pub struct Gd4Block {
     // data section
     /// Minimum version number of the MDF format the reader shall support
     pub gd_version: u16,
-    /// Reserved
+    /// Reserved (present when gd_len >= 40; some MDF 4.3 writers emit a 34-byte unpadded block)
+    #[br(if(gd_len >= 40))]
     pub gd_reserved: [u8; 6],
 }
 
@@ -473,5 +474,24 @@ mod tests {
         assert_eq!(4 + buf.len(), 40);
         let back: Gd4Block = Cursor::new(buf).read_le().unwrap();
         assert_eq!(back, gd);
+    }
+
+    #[test]
+    fn test_gd4_block_34_byte_unpadded() {
+        let mut buf = Vec::with_capacity(30);
+        buf.extend_from_slice(&[0u8; 4]); // reserved
+        buf.extend_from_slice(&34u64.to_le_bytes()); // gd_len = 34 (no gd_reserved)
+        buf.extend_from_slice(&1u64.to_le_bytes()); // gd_links
+        buf.extend_from_slice(&0x2000i64.to_le_bytes()); // gd_link
+        buf.extend_from_slice(&430u16.to_le_bytes()); // gd_version
+
+        let mut cursor = Cursor::new(&buf);
+        let parsed: Gd4Block = cursor.read_le().unwrap();
+        assert_eq!(parsed.gd_len, 34);
+        assert_eq!(parsed.gd_links, 1);
+        assert_eq!(parsed.gd_link, 0x2000);
+        assert_eq!(parsed.gd_version, 430);
+        assert_eq!(parsed.gd_reserved, [0; 6]);
+        assert_eq!(cursor.position(), 30);
     }
 }

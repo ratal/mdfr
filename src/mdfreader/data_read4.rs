@@ -1179,20 +1179,30 @@ pub fn read_channels_from_bytes_with_inval(
                 }
                 return Ok(());
             }
-            if cn.block.cn_type == 0
-                || cn.block.cn_type == 2
-                || cn.block.cn_type == 4
-                || cn.block.cn_type == 5
-                || (cn.block.cn_type == 7
-                    && matches!(
-                        &cn.builder,
-                        Some(
-                            ChannelBuilder::UInt8(_)
-                                | ChannelBuilder::UInt16(_)
-                                | ChannelBuilder::UInt32(_)
-                                | ChannelBuilder::UInt64(_)
-                        )
-                    ))
+            let is_dynamic_compo = matches!(
+                cn.composition.as_ref().map(|c| &c.block),
+                Some(Compo::DS(_) | Compo::CL(_))
+            ) || matches!(
+                cn.composition.as_ref().map(|c| &c.block),
+                Some(Compo::CA(ca)) if ca.ca_storage == 5
+            );
+            let is_vlsc_offset_channel = cn.block.cn_type == 7
+                && matches!(
+                    &cn.builder,
+                    Some(
+                        ChannelBuilder::UInt8(_)
+                            | ChannelBuilder::UInt16(_)
+                            | ChannelBuilder::UInt32(_)
+                            | ChannelBuilder::UInt64(_)
+                    )
+                );
+            if (cn.block.cn_flags & CN_F_DATA_STREAM_MODE) == 0
+                && !is_dynamic_compo
+                && (cn.block.cn_type == 0
+                    || cn.block.cn_type == 2
+                    || cn.block.cn_type == 4
+                    || cn.block.cn_type == 5
+                    || is_vlsc_offset_channel)
             {
                 let mut value: &[u8];
                 let pos_byte_beg = cn.pos_byte_beg as usize;
@@ -1201,6 +1211,10 @@ pub fn read_channels_from_bytes_with_inval(
                 let is_big = cn.endian.is_big();
                 let bit_offset = cn.block.cn_bit_offset;
                 let bit_count = cn.block.cn_bit_count;
+                let builder = match &mut cn.builder {
+                    Some(b) => b,
+                    None => return Ok(()),
+                };
                 if pos_byte_beg.saturating_add(n_bytes) > record_length {
                     bail!(
                         "Channel '{}' field ({}..{}) exceeds record length {}",
@@ -1210,26 +1224,6 @@ pub fn read_channels_from_bytes_with_inval(
                         record_length
                     );
                 }
-                if cn.block.cn_type == 1 {
-                    let c_vlsd_channel = Arc::clone(&vlsd_channels);
-                    let mut vlsd_channel = c_vlsd_channel
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    vlsd_channel.push((cn.block.cn_type, *rec_pos));
-                    extract_record_invalid_bits(
-                        cn,
-                        data_chunk,
-                        record_length,
-                        previous_index,
-                        record_with_invalid_data,
-                        cg_inval_bytes,
-                    );
-                    return Ok(());
-                }
-                let builder = match &mut cn.builder {
-                    Some(b) => b,
-                    None => return Ok(()),
-                };
                 match builder {
                     ChannelBuilder::Int8(a) => {
                         let data = a.values_slice_mut();
@@ -1647,4 +1641,62 @@ pub fn read_channels_from_bytes_with_inval(
         .lock()
         .map_err(|e| anyhow::anyhow!("Could not get lock from vlsd channel arc vec: {e}"))?;
     Ok(lock.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data_holder::channel_data::ChannelData;
+    use crate::data_holder::tensor_arrow::Order;
+    use crate::mdfinfo::mdfinfo4::{BlockType, Cn4Block, Endianness, default_short_header};
+
+    fn make_test_cn(name: &str, pos_byte_beg: u32, n_bytes: u32, cn_flags: u32) -> Cn4 {
+        let block = Cn4Block {
+            cn_type: 0,
+            cn_data_type: 0,
+            cn_byte_offset: pos_byte_beg,
+            cn_bit_count: n_bytes * 8,
+            cn_flags,
+            ..Default::default()
+        };
+        Cn4 {
+            header: default_short_header(BlockType::CN),
+            unique_name: name.to_string(),
+            block_position: 100,
+            pos_byte_beg,
+            n_bytes,
+            composition: None,
+            data: ChannelData::UInt64(arrow::array::UInt64Array::from(Vec::<u64>::new())),
+            builder: None,
+            is_converted: false,
+            block,
+            endian: Endianness::Little,
+            list_size: 1,
+            shape: (vec![1], Order::RowMajor),
+            invalid_mask: None,
+            event_template: None,
+            should_read: true,
+        }
+    }
+
+    #[test]
+    fn test_data_stream_mode_and_none_builder_skip_record_bounds_check() {
+        let mut channels = CnType::default();
+
+        // Channel with CN_F_DATA_STREAM_MODE whose offset exceeds the 8-byte CG record
+        let mut ds_cn = make_test_cn("stream_ch", 12, 8, CN_F_DATA_STREAM_MODE);
+        ds_cn.init_builder(2).unwrap();
+        channels.insert(-100, ds_cn);
+
+        // Channel with builder = None whose offset exceeds the 8-byte CG record
+        let no_builder_cn = make_test_cn("unread_ch", 16, 8, 0);
+        channels.insert(128, no_builder_cn);
+
+        let data_chunk = [0u8; 16]; // 2 records of 8 bytes
+        let dynamic =
+            read_channels_from_bytes_with_inval(&data_chunk, &mut channels, 8, 0, false, 0)
+                .expect("data stream mode and None-builder channels should not fail bounds check");
+
+        assert_eq!(dynamic, vec![(0, -100)]);
+    }
 }

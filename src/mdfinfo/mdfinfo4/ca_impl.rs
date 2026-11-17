@@ -16,7 +16,7 @@ pub use mdfr_core::blocks::ca::{Ca4Block, Ca4BlockMembers};
 
 /// Channel Array block parser
 pub(super) fn parse_ca_block(
-    ca_block: &mut Cursor<Vec<u8>>,
+    ca_block: &mut Cursor<&[u8]>,
     block_header: Blockheader4Short,
     _cg_cycle_count: u64,
 ) -> Result<CaBlockParseResult, Error> {
