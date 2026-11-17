@@ -1,0 +1,185 @@
+use crate::common;
+
+use anyhow::Result;
+use mdfr::data_holder::channel_data::{AsValuesSlice, ChannelData};
+use mdfr::mdfreader::Mdf;
+use std::sync::LazyLock;
+
+static BASE: LazyLock<String> =
+    LazyLock::new(|| format!("{}DataTypes/CANopenTypes/", common::base_path_mdf4()));
+
+#[test]
+fn canopen_date() -> Result<()> {
+    let file = format!("{}Vector_CANOpenDate.mf4", *BASE);
+    if !std::path::Path::new(&file).exists() {
+        return Ok(());
+    }
+    let mut mdf = Mdf::new(&file)?;
+    mdf.load_all_channels_data_in_memory()?;
+    let names = mdf.get_channel_names_set();
+    assert!(names.contains("Data channel_ms"));
+    assert!(names.contains("Data channel_min"));
+    assert!(names.contains("Data channel_hour"));
+    assert!(names.contains("Data channel_day"));
+    assert!(names.contains("Data channel_month"));
+    assert!(names.contains("Data channel_year"));
+
+    if let Some(ChannelData::UInt16(builder)) = mdf.get_channel_data("Data channel_ms") {
+        assert_eq!(
+            builder.values_slice(),
+            &[30000, 0, 30000, 0, 30000, 0, 30000, 0, 30000, 0]
+        );
+    } else {
+        panic!("Channel 'Data channel_ms' missing or wrong type");
+    }
+
+    if let Some(ChannelData::UInt8(builder)) = mdf.get_channel_data("Data channel_min") {
+        assert_eq!(
+            builder.values_slice(),
+            &[19, 20, 20, 21, 21, 22, 22, 23, 23, 24]
+        );
+    } else {
+        panic!("Channel 'Data channel_min' missing or wrong type");
+    }
+
+    if let Some(ChannelData::UInt8(builder)) = mdf.get_channel_data("Data channel_hour") {
+        assert_eq!(
+            builder.values_slice(),
+            &[11, 13, 15, 17, 19, 21, 23, 1, 2, 11]
+        );
+    } else {
+        panic!("Channel 'Data channel_hour' missing or wrong type");
+    }
+
+    if let Some(ChannelData::UInt8(builder)) = mdf.get_channel_data("Data channel_day") {
+        assert_eq!(
+            builder.values_slice(),
+            &[15, 16, 17, 18, 19, 20, 21, 22, 23, 16]
+        );
+    } else {
+        panic!("Channel 'Data channel_day' missing or wrong type");
+    }
+
+    // Month on 4 bits (LSB 0..3) per Table 28 of MDF 4.3.0
+    if let Some(ChannelData::UInt8(builder)) = mdf.get_channel_data("Data channel_month") {
+        assert_eq!(
+            builder.values_slice(),
+            &[10, 10, 10, 10, 10, 10, 10, 10, 10, 6]
+        );
+    } else {
+        panic!("Channel 'Data channel_month' missing or wrong type");
+    }
+
+    if let Some(ChannelData::UInt8(builder)) = mdf.get_channel_data("Data channel_year") {
+        assert_eq!(
+            builder.values_slice(),
+            &[12, 12, 12, 12, 12, 12, 12, 12, 12, 12]
+        );
+    } else {
+        panic!("Channel 'Data channel_year' missing or wrong type");
+    }
+
+    Ok(())
+}
+
+#[test]
+fn canopen_time() -> Result<()> {
+    let file = format!("{}Vector_CANOpenTime.mf4", *BASE);
+    if !std::path::Path::new(&file).exists() {
+        return Ok(());
+    }
+    let mut mdf = Mdf::new(&file)?;
+    mdf.load_all_channels_data_in_memory()?;
+    let names = mdf.get_channel_names_set();
+    assert!(names.contains("Data channel_ms"));
+    assert!(names.contains("Data channel_day"));
+
+    if let Some(ChannelData::UInt32(builder)) = mdf.get_channel_data("Data channel_ms") {
+        assert_eq!(
+            builder.values_slice(),
+            &[
+                45060000, 45120000, 45180000, 45240000, 45300000, 45360000, 45420000, 45480000,
+                45540000, 45600000
+            ]
+        );
+    } else {
+        panic!("Channel 'Data channel_ms' missing or wrong type");
+    }
+
+    if let Some(ChannelData::UInt16(builder)) = mdf.get_channel_data("Data channel_day") {
+        assert_eq!(builder.values_slice(), &[10511; 10]);
+    } else {
+        panic!("Channel 'Data channel_day' missing or wrong type");
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_days_since_unix_epoch_canopen_epoch() {
+    assert_eq!(
+        mdfr::mdfreader::data_read4::days_since_unix_epoch(1984, 1, 1),
+        5113
+    );
+}
+
+#[test]
+fn test_days_since_unix_epoch_unix_epoch() {
+    assert_eq!(
+        mdfr::mdfreader::data_read4::days_since_unix_epoch(1970, 1, 1),
+        0
+    );
+}
+
+#[test]
+fn test_days_since_unix_epoch_leap_year() {
+    assert_eq!(
+        mdfr::mdfreader::data_read4::days_since_unix_epoch(1972, 3, 1),
+        790
+    );
+}
+
+#[test]
+fn test_canopen_time_epoch() {
+    let bytes = [0u8; 6];
+    assert_eq!(
+        mdfr::mdfreader::data_read4::canopen_time_to_unix_ms(&bytes),
+        441_763_200_000
+    );
+}
+
+#[test]
+fn test_canopen_time_1984_01_02_midnight() {
+    let mut bytes = [0u8; 6];
+    bytes[4..6].copy_from_slice(&1u16.to_le_bytes());
+    let expected = 441_763_200_000 + 86_400_000;
+    assert_eq!(
+        mdfr::mdfreader::data_read4::canopen_time_to_unix_ms(&bytes),
+        expected
+    );
+}
+
+#[test]
+fn test_canopen_date_1984_01_01_midnight() {
+    let mut bytes = [0u8; 7];
+    bytes[4] = 1;
+    bytes[5] = 1;
+    bytes[6] = 0;
+    assert_eq!(
+        mdfr::mdfreader::data_read4::canopen_date_to_unix_ms(&bytes),
+        441_763_200_000
+    );
+}
+
+#[test]
+fn test_canopen_date_known_value() {
+    let mut bytes = [0u8; 7];
+    bytes[4] = 1;
+    bytes[5] = 1;
+    bytes[6] = 16;
+    let expected = 10957i64 * 86_400_000;
+    assert_eq!(
+        mdfr::mdfreader::data_read4::canopen_date_to_unix_ms(&bytes),
+        expected
+    );
+}
