@@ -1,6 +1,6 @@
 [package]
 name = "mdfr-core"
-version = "0.8.4"
+version = "0.8.5"
 description = "no_std core of mdfr: MDF 4.3 block model, codecs and embedded logger"
 authors = ["ratal <ratal@ratal.org>"]
 edition = "2024"
@@ -37,7 +37,7 @@ lz4_flex = { version = "0.14.0", default-features = false, features = [
     "safe-decode",
 ], optional = true }
 zstd = { version = "0.14.3", optional = true }
-mdfr-derive = { path = "../mdfr-derive", version = "0.8.4", optional = true }
+mdfr-derive = { path = "../mdfr-derive", version = "0.8.5", optional = true }
 defmt = { version = "=1.2.0", features = ["alloc"], optional = true }
 embedded-io = { version = "0.7.1", default-features = false, optional = true }
 embedded-io-async = { version = "0.7.0", default-features = false, optional = true }
