@@ -251,6 +251,9 @@ impl MdfInfo3 {
             && let Some(cg) = dg.cg.get_mut(rec_id)
             && let Some(cn) = cg.cn.get_mut(cn_pos)
         {
+            cg.block.cg_cycle_count = data.len() as u32;
+            cn.is_converted = true;
+            cn.block1.cn_cc_conversion = 0;
             cn.data = data;
         }
         Ok(())
@@ -271,6 +274,7 @@ impl MdfInfo3 {
                 && !cn.data.is_empty()
             {
                 cn.data = cn.data.slice_range(start_idx, end_idx)?;
+                cg.block.cg_cycle_count = cn.data.len() as u32;
             }
         }
         Ok(())
@@ -298,6 +302,14 @@ impl MdfInfo3 {
             state = cn.channel_data_valid
         }
         state
+    }
+    /// Returns `true` if the channel has data loaded in memory without triggering conversion.
+    pub fn has_channel_data(&self, channel_name: &str) -> bool {
+        self.get_channel_id(channel_name)
+            .and_then(|(_, dg_pos, (_, rec_id), cn_pos)| {
+                self.dg.get(dg_pos)?.cg.get(rec_id)?.cn.get(cn_pos)
+            })
+            .is_some_and(|cn| !cn.data.is_empty())
     }
     /// Returns the channel's data ndarray if present in memory, otherwise None.
     /// If data were not converted yet, it will convert it and keep in memory for further use
@@ -368,9 +380,6 @@ impl MdfInfo3 {
                 for ch in cg.cn.values() {
                     if let Some(val) = self.channel_names_set.get_mut(&ch.unique_name) {
                         val.0 = Some(Arc::clone(&new_arc));
-                        val.1 = dg_pos;
-                        val.2 = (cg_pos, rec_id);
-                        val.3 = cn_pos;
                     }
                 }
             }

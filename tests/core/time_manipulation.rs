@@ -420,3 +420,97 @@ fn datetimes_none_for_non_time_master() -> Result<()> {
     }
     Ok(())
 }
+
+#[test]
+fn cut_resample_and_set_channel_data_write_roundtrip() -> Result<()> {
+    use mdfr::CompressionAlgorithm;
+    use mdfr::logger::{ConversionDef, DataLayout, Logger, LoggerBuilder};
+    use mdfr_core::blocks::cn::CnDataType;
+    use mdfr_core::time::ManualClock;
+    use std::sync::Arc;
+
+    let tmp_dir = tempfile::tempdir()?;
+    let src_path = tmp_dir.path().join("src.mf4");
+
+    let mut b = LoggerBuilder::new(DataLayout::Sorted, CompressionAlgorithm::NoCompression);
+    let g = b.add_group("Grp");
+    let ch = b.add_channel(g, "Sig", CnDataType::UIntLE, 16)?;
+    b.set_channel_conversion(ch, ConversionDef::Linear { p1: 5.0, p2: 2.0 })?;
+    let schema = b.build()?;
+    let f = std::fs::File::create(&src_path)?;
+    let mut logger = Logger::start(schema, f, ManualClock::new(1e-1, 1))?;
+    for i in 0..10u64 {
+        logger.begin_record(g)?.set_u64(ch, i)?.commit()?;
+    }
+    logger.close()?;
+
+    // 1. cut() -> write() -> reload()
+    let cut_path = tmp_dir.path().join("cut.mf4");
+    let mut mdf_cut = Mdf::new(src_path.to_str().unwrap())?;
+    mdf_cut.load_all_channels_data_in_memory()?;
+    mdf_cut.cut("time", 0.2, 0.5)?;
+    mdf_cut.write(
+        cut_path.to_str().unwrap(),
+        CompressionAlgorithm::NoCompression,
+    )?;
+    let mut reloaded_cut = Mdf::new(cut_path.to_str().unwrap())?;
+    reloaded_cut.load_all_channels_data_in_memory()?;
+    match reloaded_cut.get_channel_data("Sig") {
+        Some(ChannelData::Float64(a)) => {
+            assert_eq!(a.values_slice(), &[9.0, 11.0, 13.0, 15.0]);
+        }
+        other => panic!("expected Float64, got {other:?}"),
+    }
+
+    // 1b. empty cut() -> write() -> reload() must produce valid empty MDF4 (hd_dg_first == 0)
+    let empty_cut_path = tmp_dir.path().join("empty_cut.mf4");
+    let mut mdf_empty = Mdf::new(src_path.to_str().unwrap())?;
+    mdf_empty.load_all_channels_data_in_memory()?;
+    mdf_empty.cut("time", 10.0, 20.0)?;
+    mdf_empty.write(
+        empty_cut_path.to_str().unwrap(),
+        CompressionAlgorithm::NoCompression,
+    )?;
+    let reloaded_empty = Mdf::new(empty_cut_path.to_str().unwrap())?;
+    assert_eq!(reloaded_empty.channel_count(), 0);
+
+    // 2. resample() -> write() -> reload()
+    let resampled_path = tmp_dir.path().join("resampled.mf4");
+    let mut mdf_res = Mdf::new(src_path.to_str().unwrap())?;
+    mdf_res.load_all_channels_data_in_memory()?;
+    mdf_res.resample(0.2)?;
+    mdf_res.write(
+        resampled_path.to_str().unwrap(),
+        CompressionAlgorithm::NoCompression,
+    )?;
+    let mut reloaded_res = Mdf::new(resampled_path.to_str().unwrap())?;
+    reloaded_res.load_all_channels_data_in_memory()?;
+    assert_eq!(
+        reloaded_res.get_channel_data("time").map(|d| d.len()),
+        Some(5)
+    );
+
+    // 3. set_channel_data() on lazily-loaded channel with CCBLOCK -> no double conversion
+    let set_path = tmp_dir.path().join("set.mf4");
+    let mut mdf_set = Mdf::new(src_path.to_str().unwrap())?;
+    mdf_set.load_all_channels_data_in_memory()?;
+    mdf_set.set_channel_data(
+        "Sig",
+        Arc::new(arrow::array::Float64Array::from(vec![100.0, 200.0])),
+    )?;
+    match mdf_set.get_channel_data("Sig") {
+        Some(ChannelData::Float64(a)) => assert_eq!(a.values_slice(), &[100.0, 200.0]),
+        other => panic!("expected untouched Float64, got {other:?}"),
+    }
+    mdf_set.write(
+        set_path.to_str().unwrap(),
+        CompressionAlgorithm::NoCompression,
+    )?;
+    let mut reloaded_set = Mdf::new(set_path.to_str().unwrap())?;
+    reloaded_set.load_all_channels_data_in_memory()?;
+    match reloaded_set.get_channel_data("Sig") {
+        Some(ChannelData::Float64(a)) => assert_eq!(a.values_slice(), &[100.0, 200.0]),
+        other => panic!("expected untouched Float64 after reload, got {other:?}"),
+    }
+    Ok(())
+}

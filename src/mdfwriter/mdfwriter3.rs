@@ -16,7 +16,11 @@ fn add_cn3_to_mdf4(
 ) -> Result<(), Error> {
     let unit = mdf3._get_unit(&cn.block1.cn_cc_conversion);
     let desc = Some(cn.description.clone());
-    let cycle_count = cg.block.cg_cycle_count as usize;
+    let cycle_count = if !cn.data.is_empty() {
+        cn.data.len()
+    } else {
+        cg.block.cg_cycle_count as usize
+    };
     let machine_endian: bool = cfg!(target_endian = "big");
     let (data_for_mdf4, data_type, bit_count, byte_count, ndim, (shape_vec, order)) =
         if convert_data {

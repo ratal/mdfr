@@ -131,9 +131,9 @@ pub fn mdf4_cn_to_hdf5(
     compression: &Hdf5Compression,
     group: &H5Group,
 ) -> Result<(), Error> {
-    let dataset =
-        convert_channel_data_into_h5dataset(compression, group, &cn.data, &cn.unique_name)
-            .with_context(|| format!("failed writing channel {} dataset", cn.unique_name))?;
+    let data = crate::mdfreader::conversions4::convert_channel_data_cow(cn, &mdfinfo4.sharable)?;
+    let dataset = convert_channel_data_into_h5dataset(compression, group, &data, &cn.unique_name)
+        .with_context(|| format!("failed writing channel {} dataset", cn.unique_name))?;
     // writing channel unit if existing
     if let Ok(Some(unit)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_unit)
         && !unit.is_empty()
@@ -202,9 +202,9 @@ fn mdf3_cn_to_hdf5(
     compression: &Hdf5Compression,
     group: &H5Group,
 ) -> Result<(), Error> {
-    let dataset =
-        convert_channel_data_into_h5dataset(compression, group, &cn.data, &cn.unique_name)
-            .with_context(|| format!("failed writing channel {} dataset", cn.unique_name))?;
+    let data = crate::mdfreader::conversions3::convert_channel_data_cow_3(cn, &mdfinfo3.sharable)?;
+    let dataset = convert_channel_data_into_h5dataset(compression, group, &data, &cn.unique_name)
+        .with_context(|| format!("failed writing channel {} dataset", cn.unique_name))?;
     // writing channel unit if existing
     if let Some(unit) = mdfinfo3._get_unit(&cn.block1.cn_cc_conversion)
         && !unit.is_empty()

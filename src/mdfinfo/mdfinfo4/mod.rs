@@ -124,6 +124,14 @@ impl MdfInfo4 {
         }
         Ok(())
     }
+    /// Returns `true` if the channel has data loaded in memory without triggering conversion.
+    pub fn has_channel_data(&self, channel_name: &str) -> bool {
+        self.get_channel_id(channel_name)
+            .and_then(|(_, dg_pos, (_, rec_id), (_, rec_pos))| {
+                self.dg.get(dg_pos)?.cg.get(rec_id)?.cn.get(rec_pos)
+            })
+            .is_some_and(|cn| !cn.data.is_empty())
+    }
     /// Returns the channel's vector data if present in memory, otherwise None.
     /// If data were not converted yet, it will convert it and keep in memory for further use
     pub fn get_channel_data(&mut self, channel_name: &str) -> Option<&ChannelData> {
@@ -442,6 +450,9 @@ impl MdfInfo4 {
             && let Some(cg) = dg.cg.get_mut(rec_id)
             && let Some(cn) = cg.cn.get_mut(rec_pos)
         {
+            cg.block.cg_cycle_count = data.len() as u64;
+            cn.is_converted = true;
+            cn.block.cn_cc_conversion = 0;
             cn.data = data;
         }
         Ok(())
@@ -462,6 +473,7 @@ impl MdfInfo4 {
                 && !cn.data.is_empty()
             {
                 cn.data = cn.data.slice_range(start_idx, end_idx)?;
+                cg.block.cg_cycle_count = cn.data.len() as u64;
             }
         }
         Ok(())
@@ -684,6 +696,9 @@ impl MdfInfo4 {
         {
             let new_arc: Arc<str> = Arc::from(new_name);
             cn.unique_name = Arc::clone(&new_arc);
+            let tx_pos = position_generator();
+            self.sharable.create_tx(tx_pos, new_name.to_string());
+            cn.block.cn_tx_name = tx_pos;
             let is_master = master.as_deref() == Some(channel_name);
             if is_master {
                 cg.master_channel_name = Some(Arc::clone(&new_arc));
@@ -717,7 +732,12 @@ impl MdfInfo4 {
             && let Some(cg) = dg.cg.get_mut(rec_id)
             && let Some(cn) = cg.cn.get_mut(rec_pos)
         {
-            cn.data = try_from(&data).context("failed converting dyn array to ChannelData")?;
+            let channel_data =
+                try_from(&data).context("failed converting dyn array to ChannelData")?;
+            cg.block.cg_cycle_count = channel_data.len() as u64;
+            cn.is_converted = true;
+            cn.block.cn_cc_conversion = 0;
+            cn.data = channel_data;
         }
 
         Ok(())

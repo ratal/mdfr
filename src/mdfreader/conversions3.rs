@@ -1,5 +1,5 @@
 //! this modules implements functions to convert arrays into physical arrays using CCBlock
-use anyhow::{Context, Error, Result};
+use anyhow::{Context, Error, Result, bail};
 use arrow::array::{Array, LargeStringArray, LargeStringBuilder, PrimitiveArray};
 use arrow::datatypes::{ArrowPrimitiveType, Float64Type};
 use itertools::Itertools;
@@ -12,13 +12,221 @@ use std::borrow::Cow;
 use crate::data_holder::channel_data::ChannelData;
 use crate::mdfinfo::mdfinfo3::{Cn3, Conversion, Dg3, SharableBlocks3};
 use crate::mdfreader::conversions4::{
-    ConvertedOutputSignature, SingleVarNamespace, channel_data_signature, linear_calculation,
-    rational_calculation,
+    ConvertedOutputSignature, alegbraic_conversion_primitive, channel_data_signature,
+    linear_calculation, rational_calculation, value_to_value_with_interpolation_primitive,
+    value_to_value_without_interpolation_primitive,
 };
-use fasteval::Evaler;
-use fasteval::{Compiler, Instruction, Slab};
+use fasteval::Compiler;
 use log::warn;
 use rayon::prelude::*;
+
+/// Dispatches a conversion closure over all 10 numeric scalar [`ChannelData`] variants.
+macro_rules! apply_scalar_cn3 {
+    ($cn:expr, $conv_name:literal, |$a:ident| $body:expr) => {
+        match &mut $cn.data {
+            ChannelData::Int8($a) => {
+                $cn.data = ChannelData::Float64(
+                    $body.with_context(|| concat!("failed ", $conv_name, " of i8 channel"))?,
+                );
+            }
+            ChannelData::UInt8($a) => {
+                $cn.data = ChannelData::Float64(
+                    $body.with_context(|| concat!("failed ", $conv_name, " of u8 channel"))?,
+                );
+            }
+            ChannelData::Int16($a) => {
+                $cn.data = ChannelData::Float64(
+                    $body.with_context(|| concat!("failed ", $conv_name, " of i16 channel"))?,
+                );
+            }
+            ChannelData::UInt16($a) => {
+                $cn.data = ChannelData::Float64(
+                    $body.with_context(|| concat!("failed ", $conv_name, " of u16 channel"))?,
+                );
+            }
+            ChannelData::Int32($a) => {
+                $cn.data = ChannelData::Float64(
+                    $body.with_context(|| concat!("failed ", $conv_name, " of i32 channel"))?,
+                );
+            }
+            ChannelData::UInt32($a) => {
+                $cn.data = ChannelData::Float64(
+                    $body.with_context(|| concat!("failed ", $conv_name, " of u32 channel"))?,
+                );
+            }
+            ChannelData::Float32($a) => {
+                $cn.data = ChannelData::Float64(
+                    $body.with_context(|| concat!("failed ", $conv_name, " of f32 channel"))?,
+                );
+            }
+            ChannelData::Int64($a) => {
+                $cn.data = ChannelData::Float64(
+                    $body.with_context(|| concat!("failed ", $conv_name, " of i64 channel"))?,
+                );
+            }
+            ChannelData::UInt64($a) => {
+                $cn.data = ChannelData::Float64(
+                    $body.with_context(|| concat!("failed ", $conv_name, " of u64 channel"))?,
+                );
+            }
+            ChannelData::Float64($a) => {
+                $cn.data = ChannelData::Float64(
+                    $body.with_context(|| concat!("failed ", $conv_name, " of f64 channel"))?,
+                );
+            }
+            _ => warn!(
+                "not possible to apply {} to the data type of channel {}",
+                $conv_name, $cn.unique_name,
+            ),
+        }
+    };
+    ($cn:expr, $conv_name:literal, opt |$a:ident| $body:expr) => {
+        match &mut $cn.data {
+            ChannelData::Int8($a) => {
+                if let Some(new_array) =
+                    $body.with_context(|| concat!("failed ", $conv_name, " of i8 channel"))?
+                {
+                    $cn.data = ChannelData::Float64(new_array);
+                }
+            }
+            ChannelData::UInt8($a) => {
+                if let Some(new_array) =
+                    $body.with_context(|| concat!("failed ", $conv_name, " of u8 channel"))?
+                {
+                    $cn.data = ChannelData::Float64(new_array);
+                }
+            }
+            ChannelData::Int16($a) => {
+                if let Some(new_array) =
+                    $body.with_context(|| concat!("failed ", $conv_name, " of i16 channel"))?
+                {
+                    $cn.data = ChannelData::Float64(new_array);
+                }
+            }
+            ChannelData::UInt16($a) => {
+                if let Some(new_array) =
+                    $body.with_context(|| concat!("failed ", $conv_name, " of u16 channel"))?
+                {
+                    $cn.data = ChannelData::Float64(new_array);
+                }
+            }
+            ChannelData::Int32($a) => {
+                if let Some(new_array) =
+                    $body.with_context(|| concat!("failed ", $conv_name, " of i32 channel"))?
+                {
+                    $cn.data = ChannelData::Float64(new_array);
+                }
+            }
+            ChannelData::UInt32($a) => {
+                if let Some(new_array) =
+                    $body.with_context(|| concat!("failed ", $conv_name, " of u32 channel"))?
+                {
+                    $cn.data = ChannelData::Float64(new_array);
+                }
+            }
+            ChannelData::Float32($a) => {
+                if let Some(new_array) =
+                    $body.with_context(|| concat!("failed ", $conv_name, " of f32 channel"))?
+                {
+                    $cn.data = ChannelData::Float64(new_array);
+                }
+            }
+            ChannelData::Int64($a) => {
+                if let Some(new_array) =
+                    $body.with_context(|| concat!("failed ", $conv_name, " of i64 channel"))?
+                {
+                    $cn.data = ChannelData::Float64(new_array);
+                }
+            }
+            ChannelData::UInt64($a) => {
+                if let Some(new_array) =
+                    $body.with_context(|| concat!("failed ", $conv_name, " of u64 channel"))?
+                {
+                    $cn.data = ChannelData::Float64(new_array);
+                }
+            }
+            ChannelData::Float64($a) => {
+                if let Some(new_array) =
+                    $body.with_context(|| concat!("failed ", $conv_name, " of f64 channel"))?
+                {
+                    $cn.data = ChannelData::Float64(new_array);
+                }
+            }
+            _ => warn!(
+                "not possible to apply {} to the data type of channel {}",
+                $conv_name, $cn.unique_name,
+            ),
+        }
+    };
+    ($cn:expr, $conv_name:literal, utf8 |$a:ident, $is_float:ident| $body:expr) => {
+        match &mut $cn.data {
+            ChannelData::Int8($a) => {
+                let $is_float = false;
+                $cn.data = ChannelData::Utf8(
+                    $body.with_context(|| concat!($conv_name, " of i8 channel"))?,
+                );
+            }
+            ChannelData::UInt8($a) => {
+                let $is_float = false;
+                $cn.data = ChannelData::Utf8(
+                    $body.with_context(|| concat!($conv_name, " of u8 channel"))?,
+                );
+            }
+            ChannelData::Int16($a) => {
+                let $is_float = false;
+                $cn.data = ChannelData::Utf8(
+                    $body.with_context(|| concat!($conv_name, " of i16 channel"))?,
+                );
+            }
+            ChannelData::UInt16($a) => {
+                let $is_float = false;
+                $cn.data = ChannelData::Utf8(
+                    $body.with_context(|| concat!($conv_name, " of u16 channel"))?,
+                );
+            }
+            ChannelData::Int32($a) => {
+                let $is_float = false;
+                $cn.data = ChannelData::Utf8(
+                    $body.with_context(|| concat!($conv_name, " of i32 channel"))?,
+                );
+            }
+            ChannelData::UInt32($a) => {
+                let $is_float = false;
+                $cn.data = ChannelData::Utf8(
+                    $body.with_context(|| concat!($conv_name, " of u32 channel"))?,
+                );
+            }
+            ChannelData::Float32($a) => {
+                let $is_float = true;
+                $cn.data = ChannelData::Utf8(
+                    $body.with_context(|| concat!($conv_name, " of f32 channel"))?,
+                );
+            }
+            ChannelData::Int64($a) => {
+                let $is_float = false;
+                $cn.data = ChannelData::Utf8(
+                    $body.with_context(|| concat!($conv_name, " of i64 channel"))?,
+                );
+            }
+            ChannelData::UInt64($a) => {
+                let $is_float = false;
+                $cn.data = ChannelData::Utf8(
+                    $body.with_context(|| concat!($conv_name, " of u64 channel"))?,
+                );
+            }
+            ChannelData::Float64($a) => {
+                let $is_float = true;
+                $cn.data = ChannelData::Utf8(
+                    $body.with_context(|| concat!($conv_name, " of f64 channel"))?,
+                );
+            }
+            _ => warn!(
+                "not possible to apply {} to the data type of channel {}",
+                $conv_name, $cn.unique_name,
+            ),
+        }
+    };
+}
 
 fn will_noop_conversion_3(cn: &Cn3, sharable: &SharableBlocks3) -> bool {
     if cn.is_converted || cn.data.is_empty() {
@@ -31,6 +239,14 @@ fn will_noop_conversion_3(cn: &Cn3, sharable: &SharableBlocks3) -> bool {
         Conversion::Identity => true,
         Conversion::Linear(cc_val) => {
             cc_val.len() >= 2 && cc_val[0] == 0.0 && abs(cc_val[1] - 1.0) < 1e-12
+        }
+        Conversion::Exponential(cc_val) | Conversion::Logarithmic(cc_val) => {
+            cc_val.len() < 7 || (cc_val[3] != 0.0 && cc_val[0] != 0.0)
+        }
+        Conversion::Formula(formula) => {
+            let parser = fasteval::Parser::new();
+            let mut slab = fasteval::Slab::new();
+            parser.parse(formula, &mut slab.ps).is_err()
         }
         Conversion::TextTable(cc_val_ref) => cc_val_ref.is_empty(),
         _ => false,
@@ -71,45 +287,75 @@ pub fn converted_output_signature_3(
         .get(&cn.block1.cn_cc_conversion)
         .expect("checked in will_noop_conversion_3");
     match conv {
-        Conversion::Linear(_)
-        | Conversion::TabularInterpolation(_)
-        | Conversion::Tabular(_)
-        | Conversion::Rational(_)
-        | Conversion::Formula(_)
-        | Conversion::Polynomial(_)
-        | Conversion::Exponential(_)
-        | Conversion::Logarithmic(_) => {
-            let is_numeric_scalar = matches!(
-                raw,
-                ChannelData::Int8(_)
-                    | ChannelData::UInt8(_)
-                    | ChannelData::Int16(_)
-                    | ChannelData::UInt16(_)
-                    | ChannelData::Int32(_)
-                    | ChannelData::UInt32(_)
-                    | ChannelData::Float32(_)
-                    | ChannelData::Int64(_)
-                    | ChannelData::UInt64(_)
-                    | ChannelData::Float64(_)
-            );
-            if is_numeric_scalar {
-                Ok(ConvertedOutputSignature {
-                    bit_count: 64,
-                    byte_count: 8,
-                    data_type: if machine_endian { 5 } else { 4 },
-                    is_vlsd: false,
-                    is_array: false,
-                    has_validity: raw.validity().is_some(),
-                })
-            } else {
-                Ok(channel_data_signature(raw, machine_endian))
+        Conversion::Linear(cc_val) => {
+            if cc_val.len() < 2 {
+                bail!(
+                    "malformed linear conversion: expected at least 2 parameters, got {}",
+                    cc_val.len()
+                );
             }
+            numeric_scalar_signature(raw, machine_endian)
         }
+        Conversion::Rational(cc_val) => {
+            if cc_val.len() < 6 {
+                bail!(
+                    "malformed rational conversion: expected at least 6 parameters, got {}",
+                    cc_val.len()
+                );
+            }
+            numeric_scalar_signature(raw, machine_endian)
+        }
+        Conversion::Polynomial(cc_val) => {
+            if cc_val.len() < 6 {
+                bail!(
+                    "malformed polynomial conversion: expected at least 6 parameters, got {}",
+                    cc_val.len()
+                );
+            }
+            numeric_scalar_signature(raw, machine_endian)
+        }
+        Conversion::TabularInterpolation(_)
+        | Conversion::Tabular(_)
+        | Conversion::Formula(_)
+        | Conversion::Exponential(_)
+        | Conversion::Logarithmic(_) => numeric_scalar_signature(raw, machine_endian),
         Conversion::Identity => Ok(channel_data_signature(raw, machine_endian)),
         Conversion::TextTable(_) | Conversion::TextRangeTable(_) => {
             let converted = convert_channel_data_cow_3(cn, sharable)?;
             Ok(channel_data_signature(&converted, machine_endian))
         }
+    }
+}
+
+#[inline]
+fn numeric_scalar_signature(
+    raw: &ChannelData,
+    machine_endian: bool,
+) -> Result<ConvertedOutputSignature, Error> {
+    let is_numeric_scalar = matches!(
+        raw,
+        ChannelData::Int8(_)
+            | ChannelData::UInt8(_)
+            | ChannelData::Int16(_)
+            | ChannelData::UInt16(_)
+            | ChannelData::Int32(_)
+            | ChannelData::UInt32(_)
+            | ChannelData::Float32(_)
+            | ChannelData::Int64(_)
+            | ChannelData::UInt64(_)
+            | ChannelData::Float64(_)
+    );
+    if is_numeric_scalar {
+        Ok(ConvertedOutputSignature {
+            bit_count: 64,
+            byte_count: 8,
+            data_type: if machine_endian { 5 } else { 4 },
+            is_vlsd: false,
+            is_array: false,
+            has_validity: raw.validity().is_some(),
+        })
+    } else {
+        Ok(channel_data_signature(raw, machine_endian))
     }
 }
 
@@ -129,20 +375,20 @@ pub fn convert_channel(cn: &mut Cn3, sharable: &SharableBlocks3) -> Result<(), E
             Conversion::Linear(cc_val) => linear_conversion(cn, cc_val)
                 .with_context(|| format!("linear conversion failed for {}", cn.unique_name))?,
             Conversion::TabularInterpolation(cc_val) => {
-                value_to_value_with_interpolation(cn, cc_val.clone()).with_context(|| {
+                value_to_value_with_interpolation_slice(cn, cc_val).with_context(|| {
                     format!(
                         "value to value with interpolation conversion failed for {}",
                         cn.unique_name
                     )
                 })?
             }
-            Conversion::Tabular(cc_val) => value_to_value_without_interpolation(cn, cc_val.clone())
+            Conversion::Tabular(cc_val) => value_to_value_without_interpolation_slice(cn, cc_val)
                 .with_context(|| {
-                    format!(
-                        "value to value without interpolation conversion failed for {}",
-                        cn.unique_name
-                    )
-                })?,
+                format!(
+                    "value to value without interpolation conversion failed for {}",
+                    cn.unique_name
+                )
+            })?,
             Conversion::Rational(cc_val) => rational_conversion(cn, cc_val)
                 .with_context(|| format!("rational conversion failed for {}", cn.unique_name))?,
             Conversion::Formula(formula) => algebraic_conversion(cn, formula)
@@ -190,147 +436,31 @@ pub fn convert_all_channels(dg: &mut Dg3, sharable: &SharableBlocks3) -> Result<
 
 /// Apply linear conversion to get physical data
 pub fn linear_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
+    if cc_val.len() < 2 {
+        bail!(
+            "malformed linear conversion: expected at least 2 parameters, got {}",
+            cc_val.len()
+        );
+    }
     let p1 = cc_val[0];
     let p2 = cc_val[1];
     if !(p1 == 0.0 && abs(p2 - 1.0) < 1e-12) {
-        match &mut cn.data {
-            ChannelData::UInt8(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of u8 channel")?,
-                );
-            }
-            ChannelData::Int8(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of i8 channel")?,
-                );
-            }
-            ChannelData::Int16(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of i16 channel")?,
-                );
-            }
-            ChannelData::UInt16(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of u16 channel")?,
-                );
-            }
-            ChannelData::Int32(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of i32 channel")?,
-                );
-            }
-            ChannelData::UInt32(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of u32 channel")?,
-                );
-            }
-            ChannelData::Float32(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of f32 channel")?,
-                );
-            }
-            ChannelData::Int64(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of i64 channel")?,
-                );
-            }
-            ChannelData::UInt64(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of u64 channel")?,
-                );
-            }
-            ChannelData::Float64(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of f64 channel")?,
-                );
-            }
-            _ => warn!(
-                "not possible to apply linear conversion to the data type of channel {}",
-                cn.unique_name,
-            ),
-        }
+        apply_scalar_cn3!(cn, "linear conversion", |a| linear_calculation(a, p1, p2));
     }
     Ok(())
 }
 
 /// Apply rational conversion to get physical data
 pub fn rational_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
-    match &mut cn.data {
-        ChannelData::UInt8(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed linear conversion of u8 channel")?,
-            );
-        }
-        ChannelData::Int8(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed linear conversion of i8 channel")?,
-            );
-        }
-        ChannelData::Int16(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed linear conversion of i16 channel")?,
-            );
-        }
-        ChannelData::UInt16(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed linear conversion of u16 channel")?,
-            );
-        }
-        ChannelData::Int32(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed linear conversion of i32 channel")?,
-            );
-        }
-        ChannelData::UInt32(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed linear conversion of u32 channel")?,
-            );
-        }
-        ChannelData::Float32(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed linear conversion of f32 channel")?,
-            );
-        }
-        ChannelData::Int64(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed linear conversion of i64 channel")?,
-            );
-        }
-        ChannelData::UInt64(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed linear conversion of u64 channel")?,
-            );
-        }
-        ChannelData::Float64(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed linear conversion of f64 channel")?,
-            );
-        }
-        _ => warn!(
-            "not possible to apply ratioanl conversion to the data type of channel {}",
-            cn.unique_name,
-        ),
+    if cc_val.len() < 6 {
+        bail!(
+            "malformed rational conversion: expected at least 6 parameters, got {}",
+            cc_val.len()
+        );
     }
+    apply_scalar_cn3!(cn, "rational conversion", |a| rational_calculation(
+        a, cc_val
+    ));
     Ok(())
 }
 
@@ -344,6 +474,12 @@ where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
+    if cc_val.len() < 6 {
+        bail!(
+            "malformed polynomial conversion: expected at least 6 parameters, got {}",
+            cc_val.len()
+        );
+    }
     let p1 = cc_val[0];
     let p2 = cc_val[1];
     let p3 = cc_val[2];
@@ -366,72 +502,15 @@ where
 
 /// Apply polynomial conversion to get physical data
 pub fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
-    match &mut cn.data {
-        ChannelData::UInt8(a) => {
-            cn.data = ChannelData::Float64(
-                polynomial_calculation(a, cc_val)
-                    .context("failed polynomial conversion of u8 channel")?,
-            );
-        }
-        ChannelData::Int8(a) => {
-            cn.data = ChannelData::Float64(
-                polynomial_calculation(a, cc_val)
-                    .context("failed polynomial conversion of i8 channel")?,
-            );
-        }
-        ChannelData::Int16(a) => {
-            cn.data = ChannelData::Float64(
-                polynomial_calculation(a, cc_val)
-                    .context("failed polynomial conversion of i16 channel")?,
-            );
-        }
-        ChannelData::UInt16(a) => {
-            cn.data = ChannelData::Float64(
-                polynomial_calculation(a, cc_val)
-                    .context("failed polynomial conversion of u16 channel")?,
-            );
-        }
-        ChannelData::Int32(a) => {
-            cn.data = ChannelData::Float64(
-                polynomial_calculation(a, cc_val)
-                    .context("failed polynomial conversion of i32 channel")?,
-            );
-        }
-        ChannelData::UInt32(a) => {
-            cn.data = ChannelData::Float64(
-                polynomial_calculation(a, cc_val)
-                    .context("failed polynomial conversion of u32 channel")?,
-            );
-        }
-        ChannelData::Float32(a) => {
-            cn.data = ChannelData::Float64(
-                polynomial_calculation(a, cc_val)
-                    .context("failed polynomial conversion of f32 channel")?,
-            );
-        }
-        ChannelData::Int64(a) => {
-            cn.data = ChannelData::Float64(
-                polynomial_calculation(a, cc_val)
-                    .context("failed polynomial conversion of i64 channel")?,
-            );
-        }
-        ChannelData::UInt64(a) => {
-            cn.data = ChannelData::Float64(
-                polynomial_calculation(a, cc_val)
-                    .context("failed polynomial conversion of u64 channel")?,
-            );
-        }
-        ChannelData::Float64(a) => {
-            cn.data = ChannelData::Float64(
-                polynomial_calculation(a, cc_val)
-                    .context("failed polynomial conversion of f64 channel")?,
-            );
-        }
-        _ => warn!(
-            "not possible to apply polynomial conversion to the data type of channel {}",
-            cn.unique_name,
-        ),
+    if cc_val.len() < 6 {
+        bail!(
+            "malformed polynomial conversion: expected at least 6 parameters, got {}",
+            cc_val.len()
+        );
     }
+    apply_scalar_cn3!(cn, "polynomial conversion", |a| polynomial_calculation(
+        a, cc_val
+    ));
     Ok(())
 }
 
@@ -487,82 +566,11 @@ where
 
 /// Apply exponential conversion to get physical data
 pub fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
-    match &mut cn.data {
-        ChannelData::UInt8(a) => {
-            if let Some(new_array) = exponential_calculation(a, cc_val)
-                .context("failed exponential conversion of u8 channel")?
-            {
-                cn.data = ChannelData::Float64(new_array)
-            };
-        }
-        ChannelData::Int8(a) => {
-            if let Some(new_array) = exponential_calculation(a, cc_val)
-                .context("failed exponential conversion of i8 channel")?
-            {
-                cn.data = ChannelData::Float64(new_array)
-            };
-        }
-        ChannelData::Int16(a) => {
-            if let Some(new_array) = exponential_calculation(a, cc_val)
-                .context("failed exponential conversion of i16 channel")?
-            {
-                cn.data = ChannelData::Float64(new_array)
-            };
-        }
-        ChannelData::UInt16(a) => {
-            if let Some(new_array) = exponential_calculation(a, cc_val)
-                .context("failed exponential conversion of u16 channel")?
-            {
-                cn.data = ChannelData::Float64(new_array)
-            };
-        }
-        ChannelData::Int32(a) => {
-            if let Some(new_array) = exponential_calculation(a, cc_val)
-                .context("failed exponential conversion of i32 channel")?
-            {
-                cn.data = ChannelData::Float64(new_array)
-            };
-        }
-        ChannelData::UInt32(a) => {
-            if let Some(new_array) = exponential_calculation(a, cc_val)
-                .context("failed exponential conversion of u32 channel")?
-            {
-                cn.data = ChannelData::Float64(new_array)
-            };
-        }
-        ChannelData::Float32(a) => {
-            if let Some(new_array) = exponential_calculation(a, cc_val)
-                .context("failed exponential conversion of f32 channel")?
-            {
-                cn.data = ChannelData::Float64(new_array)
-            };
-        }
-        ChannelData::Int64(a) => {
-            if let Some(new_array) = exponential_calculation(a, cc_val)
-                .context("failed exponential conversion of i64 channel")?
-            {
-                cn.data = ChannelData::Float64(new_array)
-            };
-        }
-        ChannelData::UInt64(a) => {
-            if let Some(new_array) = exponential_calculation(a, cc_val)
-                .context("failed exponential conversion of u64 channel")?
-            {
-                cn.data = ChannelData::Float64(new_array)
-            };
-        }
-        ChannelData::Float64(a) => {
-            if let Some(new_array) = exponential_calculation(a, cc_val)
-                .context("failed exponential conversion of f64 channel")?
-            {
-                cn.data = ChannelData::Float64(new_array)
-            };
-        }
-        _ => warn!(
-            "not possible to apply exponential conversion to the data type of channel {}",
-            cn.unique_name,
-        ),
-    }
+    apply_scalar_cn3!(
+        cn,
+        "exponential conversion",
+        opt | a | exponential_calculation(a, cc_val)
+    );
     Ok(())
 }
 
@@ -616,140 +624,14 @@ where
     }
 }
 
-/// Apply exponential conversion to get physical data
+/// Apply logarithmic conversion to get physical data
 pub fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
-    match &mut cn.data {
-        ChannelData::UInt8(a) => {
-            if let Some(new_array) = logarithmic_calculation(a, cc_val)
-                .context("failed logarithmic conversion of u8 channel")?
-            {
-                cn.data = ChannelData::Float64(new_array)
-            };
-        }
-        ChannelData::Int8(a) => {
-            if let Some(new_array) = logarithmic_calculation(a, cc_val)
-                .context("failed logarithmic conversion of i8 channel")?
-            {
-                cn.data = ChannelData::Float64(new_array)
-            };
-        }
-        ChannelData::Int16(a) => {
-            if let Some(new_array) = logarithmic_calculation(a, cc_val)
-                .context("failed logarithmic conversion of i16 channel")?
-            {
-                cn.data = ChannelData::Float64(new_array)
-            };
-        }
-        ChannelData::UInt16(a) => {
-            if let Some(new_array) = logarithmic_calculation(a, cc_val)
-                .context("failed logarithmic conversion of u16 channel")?
-            {
-                cn.data = ChannelData::Float64(new_array)
-            };
-        }
-        ChannelData::Int32(a) => {
-            if let Some(new_array) = logarithmic_calculation(a, cc_val)
-                .context("failed logarithmic conversion of i32 channel")?
-            {
-                cn.data = ChannelData::Float64(new_array)
-            };
-        }
-        ChannelData::UInt32(a) => {
-            if let Some(new_array) = logarithmic_calculation(a, cc_val)
-                .context("failed logarithmic conversion of u32 channel")?
-            {
-                cn.data = ChannelData::Float64(new_array)
-            };
-        }
-        ChannelData::Float32(a) => {
-            if let Some(new_array) = logarithmic_calculation(a, cc_val)
-                .context("failed logarithmic conversion of f32 channel")?
-            {
-                cn.data = ChannelData::Float64(new_array)
-            };
-        }
-        ChannelData::Int64(a) => {
-            if let Some(new_array) = logarithmic_calculation(a, cc_val)
-                .context("failed logarithmic conversion of i64 channel")?
-            {
-                cn.data = ChannelData::Float64(new_array)
-            };
-        }
-        ChannelData::UInt64(a) => {
-            if let Some(new_array) = logarithmic_calculation(a, cc_val)
-                .context("failed logarithmic conversion of u64 channel")?
-            {
-                cn.data = ChannelData::Float64(new_array)
-            };
-        }
-        ChannelData::Float64(a) => {
-            if let Some(new_array) = logarithmic_calculation(a, cc_val)
-                .context("failed logarithmic conversion of f64 channel")?
-            {
-                cn.data = ChannelData::Float64(new_array)
-            };
-        }
-        _ => warn!(
-            "not possible to apply logarithmic conversion to the data type of channel {}",
-            cn.unique_name,
-        ),
-    }
+    apply_scalar_cn3!(
+        cn,
+        "logarithmic conversion",
+        opt | a | logarithmic_calculation(a, cc_val)
+    );
     Ok(())
-}
-
-/// Generic function calculating algebraic expression conversion
-#[inline]
-fn alegbraic_conversion_calculation<T: ArrowPrimitiveType>(
-    array: &PrimitiveArray<T>,
-    compiled: &Instruction,
-    slab: &Slab,
-    formulae: &str,
-    name: &str,
-) -> Result<PrimitiveArray<Float64Type>, Error>
-where
-    <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
-    T::Native: NumCast,
-    <T as ArrowPrimitiveType>::Native: Sync,
-{
-    let values = array.values();
-    let mut new_array = vec![0f64; values.len()];
-    if values.len() > 1024 {
-        new_array
-            .par_iter_mut()
-            .zip(values.par_iter())
-            .for_each(|(new_a, a)| {
-                let a_f64: f64 = (*a).as_();
-                let mut ns = SingleVarNamespace { val: a_f64 };
-                match compiled.eval(slab, &mut ns) {
-                    Ok(res) => *new_a = res,
-                    Err(error_message) => {
-                        *new_a = a_f64;
-                        warn!(
-                            "{error_message}\n Could not compute formulae {formulae} for channel {name} and value {a_f64}",
-                        );
-                    }
-                }
-            });
-    } else {
-        let mut ns = SingleVarNamespace { val: 0.0 };
-        new_array.iter_mut().zip(values).for_each(|(new_a, a)| {
-            let a_f64: f64 = (*a).as_();
-            ns.val = a_f64;
-            match compiled.eval(slab, &mut ns) {
-                Ok(res) => *new_a = res,
-                Err(error_message) => {
-                    *new_a = a_f64;
-                    warn!(
-                        "{error_message}\n Could not compute formulae {formulae} for channel {name} and value {a_f64}",
-                    );
-                }
-            }
-        });
-    }
-    Ok(PrimitiveArray::new(
-        new_array.into(),
-        array.nulls().cloned(),
-    ))
 }
 
 /// Apply algebraic conversion to get physical data
@@ -761,132 +643,9 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str) -> Result<(), Error> {
         let compiled = compiled_instruct
             .from(&slab.ps)
             .compile(&slab.ps, &mut slab.cs);
-        match &mut cn.data {
-            ChannelData::UInt8(a) => {
-                cn.data = ChannelData::Float64(
-                    alegbraic_conversion_calculation(
-                        a,
-                        &compiled,
-                        &slab,
-                        formulae,
-                        &cn.unique_name,
-                    )
-                    .context("failed algebraic conversion of u8 channel")?,
-                );
-            }
-            ChannelData::Int8(a) => {
-                cn.data = ChannelData::Float64(
-                    alegbraic_conversion_calculation(
-                        a,
-                        &compiled,
-                        &slab,
-                        formulae,
-                        &cn.unique_name,
-                    )
-                    .context("failed algebraic conversion of i8 channel")?,
-                );
-            }
-            ChannelData::Int16(a) => {
-                cn.data = ChannelData::Float64(
-                    alegbraic_conversion_calculation(
-                        a,
-                        &compiled,
-                        &slab,
-                        formulae,
-                        &cn.unique_name,
-                    )
-                    .context("failed algebraic conversion of i16 channel")?,
-                );
-            }
-            ChannelData::UInt16(a) => {
-                cn.data = ChannelData::Float64(
-                    alegbraic_conversion_calculation(
-                        a,
-                        &compiled,
-                        &slab,
-                        formulae,
-                        &cn.unique_name,
-                    )
-                    .context("failed algebraic conversion of u16 channel")?,
-                );
-            }
-            ChannelData::Int32(a) => {
-                cn.data = ChannelData::Float64(
-                    alegbraic_conversion_calculation(
-                        a,
-                        &compiled,
-                        &slab,
-                        formulae,
-                        &cn.unique_name,
-                    )
-                    .context("failed algebraic conversion of i32 channel")?,
-                );
-            }
-            ChannelData::UInt32(a) => {
-                cn.data = ChannelData::Float64(
-                    alegbraic_conversion_calculation(
-                        a,
-                        &compiled,
-                        &slab,
-                        formulae,
-                        &cn.unique_name,
-                    )
-                    .context("failed algebraic conversion of u32 channel")?,
-                );
-            }
-            ChannelData::Float32(a) => {
-                cn.data = ChannelData::Float64(
-                    alegbraic_conversion_calculation(
-                        a,
-                        &compiled,
-                        &slab,
-                        formulae,
-                        &cn.unique_name,
-                    )
-                    .context("failed algebraic conversion of f32 channel")?,
-                );
-            }
-            ChannelData::Int64(a) => {
-                cn.data = ChannelData::Float64(
-                    alegbraic_conversion_calculation(
-                        a,
-                        &compiled,
-                        &slab,
-                        formulae,
-                        &cn.unique_name,
-                    )
-                    .context("failed algebraic conversion of i64 channel")?,
-                );
-            }
-            ChannelData::UInt64(a) => {
-                cn.data = ChannelData::Float64(
-                    alegbraic_conversion_calculation(
-                        a,
-                        &compiled,
-                        &slab,
-                        formulae,
-                        &cn.unique_name,
-                    )
-                    .context("failed algebraic conversion of u64 channel")?,
-                );
-            }
-            ChannelData::Float64(a) => {
-                cn.data = ChannelData::Float64(
-                    alegbraic_conversion_calculation(
-                        a,
-                        &compiled,
-                        &slab,
-                        formulae,
-                        &cn.unique_name,
-                    )
-                    .context("failed algebraic conversion of f64 channel")?,
-                );
-            }
-            _ => warn!(
-                "not possible to apply algebraic conversion to the data type of channel {}",
-                cn.unique_name,
-            ),
-        }
+        apply_scalar_cn3!(cn, "algebraic conversion", |a| {
+            alegbraic_conversion_primitive(&compiled, &slab, a)
+        });
     } else if let Err(error_message) = compiled_instruction {
         // could not parse the formulae, probably some function or syntax not yet implementated by fasteval
         warn!(
@@ -908,116 +667,23 @@ where
     T::Native: NumCast,
 {
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
-    let values = array.values();
-    if val.is_empty() {
-        let converted: Vec<f64> = values.iter().map(|v| (*v).as_()).collect();
-        return Ok(PrimitiveArray::new(
-            converted.into(),
-            array.nulls().cloned(),
-        ));
-    }
-    let mut new_array = vec![0f64; values.len()];
-    new_array.iter_mut().zip(values).for_each(|(new_array, a)| {
-        let a_f64: f64 = (*a).as_();
-        *new_array = match val.binary_search_by(|&(xi, _)| {
-            xi.partial_cmp(&a_f64).unwrap_or(std::cmp::Ordering::Equal)
-        }) {
-            Ok(idx) => *val[idx].1,
-            Err(0) => *val[0].1,
-            Err(idx) if idx >= val.len() => *val[idx - 1].1,
-            Err(idx) => {
-                let (x0, y0) = val[idx - 1];
-                let (x1, y1) = val[idx];
-                (y0 * (x1 - a_f64) + y1 * (a_f64 - x0)) / (x1 - x0)
-            }
-        };
+    value_to_value_with_interpolation_primitive(array, &val)
+}
+
+fn value_to_value_with_interpolation_slice(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
+    let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
+    apply_scalar_cn3!(cn, "value to value with interpolation conversion", |a| {
+        value_to_value_with_interpolation_primitive(a, &val)
     });
-    Ok(PrimitiveArray::new(
-        new_array.into(),
-        array.nulls().cloned(),
-    ))
+    Ok(())
 }
 
 /// Apply value to value with interpolation conversion to get physical data
 pub fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>) -> Result<(), Error> {
-    match &mut cn.data {
-        ChannelData::Int8(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_with_interpolation_calculation(a, cc_val)
-                    .context("failed value to value with interpolation conversion of i8 channel")?,
-            );
-        }
-        ChannelData::UInt8(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_with_interpolation_calculation(a, cc_val)
-                    .context("failed value to value with interpolation conversion of u8 channel")?,
-            );
-        }
-        ChannelData::Int16(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_with_interpolation_calculation(a, cc_val).context(
-                    "failed value to value with interpolation conversion of i16 channel",
-                )?,
-            );
-        }
-        ChannelData::UInt16(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_with_interpolation_calculation(a, cc_val).context(
-                    "failed value to value with interpolation conversion of u16 channel",
-                )?,
-            );
-        }
-        ChannelData::Int32(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_with_interpolation_calculation(a, cc_val).context(
-                    "failed value to value with interpolation conversion of i32 channel",
-                )?,
-            );
-        }
-        ChannelData::UInt32(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_with_interpolation_calculation(a, cc_val).context(
-                    "failed value to value with interpolation conversion of u32 channel",
-                )?,
-            );
-        }
-        ChannelData::Float32(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_with_interpolation_calculation(a, cc_val).context(
-                    "failed value to value with interpolation conversion of f32 channel",
-                )?,
-            );
-        }
-        ChannelData::Int64(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_with_interpolation_calculation(a, cc_val).context(
-                    "failed value to value with interpolation conversion of i64 channel",
-                )?,
-            );
-        }
-        ChannelData::UInt64(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_with_interpolation_calculation(a, cc_val).context(
-                    "failed value to value with interpolation conversion of u64 channel",
-                )?,
-            );
-        }
-        ChannelData::Float64(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_with_interpolation_calculation(a, cc_val).context(
-                    "failed value to value with interpolation conversion of f64 channel",
-                )?,
-            );
-        }
-        _ => warn!(
-            "not possible to apply value to value with interpolation conversion to the data type of channel {}",
-            cn.unique_name,
-        ),
-    }
-    Ok(())
+    value_to_value_with_interpolation_slice(cn, &cc_val)
 }
 
-/// Generic function calculating algebraic expression
+/// Generic function calculating value to value without interpolation conversion
 #[inline]
 pub fn value_to_value_without_interpolation_calculation<T: ArrowPrimitiveType>(
     array: &PrimitiveArray<T>,
@@ -1028,119 +694,20 @@ where
     T::Native: NumCast,
 {
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
-    let values = array.values();
-    if val.is_empty() {
-        let converted: Vec<f64> = values.iter().map(|v| (*v).as_()).collect();
-        return Ok(PrimitiveArray::new(
-            converted.into(),
-            array.nulls().cloned(),
-        ));
-    }
-    let mut new_array = vec![0f64; values.len()];
-    new_array.iter_mut().zip(values).for_each(|(new_array, a)| {
-        let a_f64: f64 = (*a).as_();
-        *new_array = match val.binary_search_by(|&(xi, _)| {
-            xi.partial_cmp(&a_f64).unwrap_or(std::cmp::Ordering::Equal)
-        }) {
-            Ok(idx) => *val[idx].1,
-            Err(0) => *val[0].1,
-            Err(idx) if idx >= val.len() => *val[idx - 1].1,
-            Err(idx) => {
-                let (x0, y0) = val[idx - 1];
-                let (x1, y1) = val[idx];
-                if (a_f64 - x0) > (x1 - a_f64) {
-                    *y1
-                } else {
-                    *y0
-                }
-            }
-        };
+    value_to_value_without_interpolation_primitive(array, &val)
+}
+
+fn value_to_value_without_interpolation_slice(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
+    let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
+    apply_scalar_cn3!(cn, "value to value without interpolation conversion", |a| {
+        value_to_value_without_interpolation_primitive(a, &val)
     });
-    Ok(PrimitiveArray::new(
-        new_array.into(),
-        array.nulls().cloned(),
-    ))
+    Ok(())
 }
 
 /// Apply value to value without interpolation conversion to get physical data
 pub fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>) -> Result<(), Error> {
-    match &mut cn.data {
-        ChannelData::Int8(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_without_interpolation_calculation(a, cc_val).context(
-                    "failed value to value without interpolation conversion of i8 channel",
-                )?,
-            );
-        }
-        ChannelData::UInt8(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_without_interpolation_calculation(a, cc_val).context(
-                    "failed value to value without interpolation conversion of u8 channel",
-                )?,
-            );
-        }
-        ChannelData::Int16(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_without_interpolation_calculation(a, cc_val).context(
-                    "failed value to value without interpolation conversion of i16 channel",
-                )?,
-            );
-        }
-        ChannelData::UInt16(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_without_interpolation_calculation(a, cc_val).context(
-                    "failed value to value without interpolation conversion of u16 channel",
-                )?,
-            );
-        }
-        ChannelData::Int32(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_without_interpolation_calculation(a, cc_val).context(
-                    "failed value to value without interpolation conversion of i32 channel",
-                )?,
-            );
-        }
-        ChannelData::UInt32(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_without_interpolation_calculation(a, cc_val).context(
-                    "failed value to value without interpolation conversion of u32 channel",
-                )?,
-            );
-        }
-        ChannelData::Float32(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_without_interpolation_calculation(a, cc_val).context(
-                    "failed value to value without interpolation conversion of f32 channel",
-                )?,
-            );
-        }
-        ChannelData::Int64(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_without_interpolation_calculation(a, cc_val).context(
-                    "failed value to value without interpolation conversion of i64 channel",
-                )?,
-            );
-        }
-        ChannelData::UInt64(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_without_interpolation_calculation(a, cc_val).context(
-                    "failed value to value without interpolation conversion of u64 channel",
-                )?,
-            );
-        }
-        ChannelData::Float64(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_without_interpolation_calculation(a, cc_val).context(
-                    "failed value to value without interpolation conversion of f64 channel",
-                )?,
-            );
-        }
-        _ => warn!(
-            "not possible to apply value to value without interpolation conversion to the data type of channel {}",
-            cn.unique_name,
-        ),
-    }
-    Ok(())
+    value_to_value_without_interpolation_slice(cn, &cc_val)
 }
 
 /// Generic function calculating value to text expression
@@ -1177,73 +744,12 @@ where
 
 /// Apply value to text or scale conversion to get physical data
 pub fn value_to_text(cn: &mut Cn3, cc_val_ref: &[(f64, String)]) -> Result<(), Error> {
-    // identify max string length in cc_val_ref
-    match &mut cn.data {
-        ChannelData::Int8(a) => {
-            cn.data = ChannelData::Utf8(
-                value_to_text_calculation(a, cc_val_ref)
-                    .context("value to text conversion of i8 channel")?,
-            );
-        }
-        ChannelData::UInt8(a) => {
-            cn.data = ChannelData::Utf8(
-                value_to_text_calculation(a, cc_val_ref)
-                    .context("value to text conversion of u8 channel")?,
-            );
-        }
-        ChannelData::Int16(a) => {
-            cn.data = ChannelData::Utf8(
-                value_to_text_calculation(a, cc_val_ref)
-                    .context("value to text conversion of i16 channel")?,
-            );
-        }
-        ChannelData::UInt16(a) => {
-            cn.data = ChannelData::Utf8(
-                value_to_text_calculation(a, cc_val_ref)
-                    .context("value to text conversion of u16 channel")?,
-            );
-        }
-        ChannelData::Int32(a) => {
-            cn.data = ChannelData::Utf8(
-                value_to_text_calculation(a, cc_val_ref)
-                    .context("value to text conversion of i32 channel")?,
-            );
-        }
-        ChannelData::UInt32(a) => {
-            cn.data = ChannelData::Utf8(
-                value_to_text_calculation(a, cc_val_ref)
-                    .context("value to text conversion of u32 channel")?,
-            );
-        }
-        ChannelData::Float32(a) => {
-            cn.data = ChannelData::Utf8(
-                value_to_text_calculation(a, cc_val_ref)
-                    .context("value to text conversion of f32 channel")?,
-            );
-        }
-        ChannelData::Int64(a) => {
-            cn.data = ChannelData::Utf8(
-                value_to_text_calculation(a, cc_val_ref)
-                    .context("value to text conversion of i64 channel")?,
-            );
-        }
-        ChannelData::UInt64(a) => {
-            cn.data = ChannelData::Utf8(
-                value_to_text_calculation(a, cc_val_ref)
-                    .context("value to text conversion of u64 channel")?,
-            );
-        }
-        ChannelData::Float64(a) => {
-            cn.data = ChannelData::Utf8(
-                value_to_text_calculation(a, cc_val_ref)
-                    .context("value to text conversion of f64 channel")?,
-            );
-        }
-        _ => warn!(
-            "not possible to apply value to text conversion to the data type of channel {}",
-            cn.unique_name,
-        ),
-    }
+    apply_scalar_cn3!(
+        cn,
+        "value to text conversion",
+        utf8 | a,
+        _is_float | { value_to_text_calculation(a, cc_val_ref) }
+    );
     Ok(())
 }
 
@@ -1291,71 +797,45 @@ pub fn value_range_to_text(
     cn: &mut Cn3,
     cc_val_ref: &(Vec<(f64, f64, String)>, String),
 ) -> Result<(), Error> {
-    match &mut cn.data {
-        ChannelData::Int8(a) => {
-            cn.data = ChannelData::Utf8(
-                value_range_to_text_calculation(a, cc_val_ref, true)
-                    .context("value range to text conversion of i8 channel")?,
-            );
-        }
-        ChannelData::UInt8(a) => {
-            cn.data = ChannelData::Utf8(
-                value_range_to_text_calculation(a, cc_val_ref, true)
-                    .context("value range to text conversion of u8 channel")?,
-            );
-        }
-        ChannelData::Int16(a) => {
-            cn.data = ChannelData::Utf8(
-                value_range_to_text_calculation(a, cc_val_ref, true)
-                    .context("value range to text conversion of i16 channel")?,
-            );
-        }
-        ChannelData::UInt16(a) => {
-            cn.data = ChannelData::Utf8(
-                value_range_to_text_calculation(a, cc_val_ref, true)
-                    .context("value range to text conversion of u16 channel")?,
-            );
-        }
-        ChannelData::Int32(a) => {
-            cn.data = ChannelData::Utf8(
-                value_range_to_text_calculation(a, cc_val_ref, true)
-                    .context("value range to text conversion of i32 channel")?,
-            );
-        }
-        ChannelData::UInt32(a) => {
-            cn.data = ChannelData::Utf8(
-                value_range_to_text_calculation(a, cc_val_ref, true)
-                    .context("value range to text conversion of u32 channel")?,
-            );
-        }
-        ChannelData::Float32(a) => {
-            cn.data = ChannelData::Utf8(
-                value_range_to_text_calculation(a, cc_val_ref, false)
-                    .context("value range to text conversion of f32 channel")?,
-            );
-        }
-        ChannelData::Int64(a) => {
-            cn.data = ChannelData::Utf8(
-                value_range_to_text_calculation(a, cc_val_ref, true)
-                    .context("value range to text conversion of i64 channel")?,
-            );
-        }
-        ChannelData::UInt64(a) => {
-            cn.data = ChannelData::Utf8(
-                value_range_to_text_calculation(a, cc_val_ref, true)
-                    .context("value range to text conversion of u64 channel")?,
-            );
-        }
-        ChannelData::Float64(a) => {
-            cn.data = ChannelData::Utf8(
-                value_range_to_text_calculation(a, cc_val_ref, false)
-                    .context("value range to text conversion of f64 channel")?,
-            );
-        }
-        _ => warn!(
-            "not possible to apply value to text conversion to the data type of channel {}",
-            cn.unique_name,
-        ),
-    }
+    apply_scalar_cn3!(
+        cn,
+        "value range to text conversion",
+        utf8 | a,
+        is_float | { value_range_to_text_calculation(a, cc_val_ref, !is_float) }
+    );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mdfinfo::mdfinfo3::Cc3Block;
+    use arrow::array::UInt16Array;
+
+    #[test]
+    fn truncated_linear_and_polynomial_return_err() {
+        let mut cn = Cn3 {
+            data: ChannelData::UInt16(UInt16Array::from(vec![1u16, 2u16])),
+            ..Default::default()
+        };
+        assert!(linear_conversion(&mut cn, &[1.0]).is_err());
+        assert!(polynomial_conversion(&mut cn, &[1.0, 2.0, 3.0]).is_err());
+    }
+
+    #[test]
+    fn unparseable_formula3_signature_matches_raw_type() {
+        let mut sharable = SharableBlocks3::default();
+        sharable.cc.insert(
+            10,
+            (Cc3Block::default(), Conversion::Formula("bad((expr".into())),
+        );
+        let mut cn = Cn3 {
+            data: ChannelData::UInt16(UInt16Array::from(vec![5u16, 6u16])),
+            ..Default::default()
+        };
+        cn.block1.cn_cc_conversion = 10;
+        let sig = converted_output_signature_3(&cn, &sharable, false).unwrap();
+        assert_eq!(sig.bit_count, 16);
+        assert_eq!(sig.byte_count, 2);
+    }
 }

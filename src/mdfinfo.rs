@@ -680,6 +680,13 @@ impl MdfInfo {
             MdfInfo::V4(mdfinfo4) => mdfinfo4.convert_channel(channel_name),
         }
     }
+    /// Returns `true` if the channel has data loaded in memory without triggering conversion.
+    pub fn has_channel_data(&self, channel_name: &str) -> bool {
+        match self {
+            MdfInfo::V3(m) => m.has_channel_data(channel_name),
+            MdfInfo::V4(m) => m.has_channel_data(channel_name),
+        }
+    }
     /// returns channel's data ndarray. If data were not yet converted, keeps converted data into memory
     pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a str) -> Option<&'a ChannelData> {
         match self {

@@ -1,13 +1,9 @@
 //! command line interface to load mdf file and manipulate it.
-use clap::{Arg, Command};
-mod data_holder;
-mod export;
-mod mdfinfo;
-mod mdfreader;
-mod mdfwriter;
 use anyhow::{Context, Error, Result};
+use clap::{Arg, Command};
 use env_logger::Env;
 use log::info;
+use mdfr::{CompressionAlgorithm, mdfreader};
 
 fn main() -> Result<(), Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("warn")).init();
@@ -80,6 +76,14 @@ fn main() -> Result<(), Error> {
                 .help("Compression filter for writing data in hdf5 file. Default is uncompressed"),
         )
         .arg(
+            Arg::new("export_to_csv")
+                .long("export_to_csv")
+                .short('c')
+                .num_args(1)
+                .value_name("FILE_NAME")
+                .help("Converts mdf into csv files (one per channel group)"),
+        )
+        .arg(
             Arg::new("info")
                 .short('i')
                 .long("file_info")
@@ -102,8 +106,13 @@ fn main() -> Result<(), Error> {
     let mdf4_file_name = matches.get_one::<String>("write");
     let parquet_file_name = matches.get_one::<String>("export_to_parquet");
     let hdf5_file_name = matches.get_one::<String>("export_to_hdf5");
+    let csv_file_name = matches.get_one::<String>("export_to_csv");
 
-    if mdf4_file_name.is_some() || parquet_file_name.is_some() || hdf5_file_name.is_some() {
+    if mdf4_file_name.is_some()
+        || parquet_file_name.is_some()
+        || hdf5_file_name.is_some()
+        || csv_file_name.is_some()
+    {
         mdf_file
             .load_all_channels_data_in_memory()
             .with_context(|| format!("failed reading channels data from file {file_name}"))?;
@@ -116,22 +125,20 @@ fn main() -> Result<(), Error> {
         .map(String::as_str);
 
     let compression_algo = match mdf4_compression_str {
-        Some("deflate") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::Deflate,
-        Some("deflate_transpose") => {
-            crate::mdfinfo::mdfinfo4::CompressionAlgorithm::DeflateTranspose
-        }
-        Some("zstd") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::Zstd,
-        Some("zstd_transpose") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::ZstdTranspose,
-        Some("lz4") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::Lz4,
-        Some("lz4_transpose") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::Lz4Transpose,
-        Some("no_compression") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::NoCompression,
-        None if _compression => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::Deflate,
-        _ => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::DeflateTranspose,
+        Some("deflate") => CompressionAlgorithm::Deflate,
+        Some("deflate_transpose") => CompressionAlgorithm::DeflateTranspose,
+        Some("zstd") => CompressionAlgorithm::Zstd,
+        Some("zstd_transpose") => CompressionAlgorithm::ZstdTranspose,
+        Some("lz4") => CompressionAlgorithm::Lz4,
+        Some("lz4_transpose") => CompressionAlgorithm::Lz4Transpose,
+        Some("no_compression") => CompressionAlgorithm::NoCompression,
+        None if _compression => CompressionAlgorithm::Deflate,
+        _ => CompressionAlgorithm::DeflateTranspose,
     };
 
     if let Some(file_name) = mdf4_file_name {
         mdf_file.write(file_name, compression_algo)?;
-        if compression_algo != crate::mdfinfo::mdfinfo4::CompressionAlgorithm::NoCompression {
+        if compression_algo != CompressionAlgorithm::NoCompression {
             info!(
                 "Wrote mdf4 file {file_name} with compression {:?}",
                 compression_algo
@@ -161,6 +168,13 @@ fn main() -> Result<(), Error> {
                 .with_context(|| format!("failed to export into hdf5 file {file_name}"))?;
             info!("Wrote hdf5 file {file_name}");
         }
+    }
+
+    if let Some(file_name) = csv_file_name {
+        mdf_file
+            .export_to_csv(file_name)
+            .with_context(|| format!("failed to export into csv file {file_name}"))?;
+        info!("Wrote csv file {file_name}");
     }
 
     Ok(())

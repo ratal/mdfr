@@ -3,9 +3,11 @@ use crate::{
     mdfinfo::{
         MdfInfo,
         mdfinfo3::{Cg3, Cn3, MdfInfo3},
-        mdfinfo4::{Cg4, MdfInfo4},
+        mdfinfo4::{Cg4, Cn4, MdfInfo4},
     },
-    mdfreader::Mdf,
+    mdfreader::{
+        Mdf, conversions3::convert_channel_data_cow_3, conversions4::convert_channel_data_cow,
+    },
 };
 use anyhow::{Context, Result};
 use arrow::util::display::{ArrayFormatter, FormatOptions};
@@ -21,7 +23,7 @@ pub fn export_to_csv(mdf: &Mdf, file_name: &str) -> Result<()> {
                     // Collect CGs to export in parallel
                     let cg_refs: Vec<(&u64, &Cg4)> = dg.cg.iter().collect();
                     cg_refs.par_iter().try_for_each(|(rec_id, cg)| {
-                        mdf4_cg_to_csv(file_name, mdfinfo4, **rec_id, cg).with_context(|| {
+                        mdf4_cg_to_csv(file_name, mdfinfo4, cg).with_context(|| {
                             format!("failed converting Channel Group 4 rec_id {rec_id} to CSV")
                         })
                     })?;
@@ -32,7 +34,7 @@ pub fn export_to_csv(mdf: &Mdf, file_name: &str) -> Result<()> {
             for dg in mdfinfo3.dg.values() {
                 let cg_refs: Vec<(&u16, &Cg3)> = dg.cg.iter().collect();
                 cg_refs.par_iter().try_for_each(|(rec_id, cg)| {
-                    mdf3_cg_to_csv(file_name, mdfinfo3, **rec_id, cg).with_context(|| {
+                    mdf3_cg_to_csv(file_name, mdfinfo3, cg).with_context(|| {
                         format!("failed converting Channel Group 3 rec_id {rec_id} to CSV")
                     })
                 })?;
@@ -51,7 +53,7 @@ pub fn export_dataframe_to_csv(mdf: &Mdf, channel_name: &str, file_name: &str) -
                 && let Some(dg) = mdfinfo4.dg.get(dg_pos)
                 && let Some(cg) = dg.cg.get(rec_id)
             {
-                mdf4_cg_to_csv(file_name, mdfinfo4, *rec_id, cg)
+                mdf4_cg_to_csv(file_name, mdfinfo4, cg)
                     .context("failed converting Channel Group 4 to CSV")?;
             }
         }
@@ -61,7 +63,7 @@ pub fn export_dataframe_to_csv(mdf: &Mdf, channel_name: &str, file_name: &str) -
                 && let Some(dg) = mdfinfo3.dg.get(dg_pos)
                 && let Some(cg) = dg.cg.get(rec_id)
             {
-                mdf3_cg_to_csv(file_name, mdfinfo3, *rec_id, cg)
+                mdf3_cg_to_csv(file_name, mdfinfo3, cg)
                     .context("failed converting Channel Group 3 to CSV")?;
             }
         }
@@ -69,38 +71,44 @@ pub fn export_dataframe_to_csv(mdf: &Mdf, channel_name: &str, file_name: &str) -
     Ok(())
 }
 
-fn mdf4_cg_to_csv(file_name: &str, _mdfinfo4: &MdfInfo4, rec_id: u64, cg: &Cg4) -> Result<()> {
-    let channels: Vec<(&str, Arc<dyn arrow::array::Array>)> = cg
-        .cn
-        .values()
-        .filter(|cn| !cn.data.is_empty())
-        .map(|cn| (cn.unique_name.as_ref(), cn.data.finish_cloned()))
-        .collect();
+fn mdf4_cg_to_csv(file_name: &str, mdfinfo4: &MdfInfo4, cg: &Cg4) -> Result<()> {
+    let mut sorted_cns: Vec<(&i64, &Cn4)> = cg.cn.iter().collect();
+    sorted_cns.sort_unstable_by_key(|&(&rec_pos, _)| rec_pos);
+    let mut channels = Vec::with_capacity(sorted_cns.len());
+    for (_, cn) in sorted_cns {
+        if !cn.data.is_empty() {
+            let converted = convert_channel_data_cow(cn, &mdfinfo4.sharable)?;
+            channels.push((cn.unique_name.as_ref(), converted.finish_cloned()));
+        }
+    }
     if !channels.is_empty() {
-        write_csv(
-            file_name,
-            cg.master_channel_name.as_deref().map(str::to_string),
-            rec_id,
-            &channels,
-        )?;
+        let group_suffix = cg
+            .master_channel_name
+            .as_deref()
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("no_master_{}", cg.block_position));
+        write_csv(file_name, &group_suffix, &channels)?;
     }
     Ok(())
 }
 
-fn mdf3_cg_to_csv(file_name: &str, _mdfinfo3: &MdfInfo3, rec_id: u16, cg: &Cg3) -> Result<()> {
-    let channels: Vec<(&str, Arc<dyn arrow::array::Array>)> = cg
-        .cn
-        .values()
-        .filter(|cn: &&Cn3| !cn.data.is_empty())
-        .map(|cn| (cn.unique_name.as_ref(), cn.data.finish_cloned()))
-        .collect();
+fn mdf3_cg_to_csv(file_name: &str, mdfinfo3: &MdfInfo3, cg: &Cg3) -> Result<()> {
+    let mut sorted_cns: Vec<(&u32, &Cn3)> = cg.cn.iter().collect();
+    sorted_cns.sort_unstable_by_key(|&(&cn_pos, _)| cn_pos);
+    let mut channels = Vec::with_capacity(sorted_cns.len());
+    for (_, cn) in sorted_cns {
+        if !cn.data.is_empty() {
+            let converted = convert_channel_data_cow_3(cn, &mdfinfo3.sharable)?;
+            channels.push((cn.unique_name.as_ref(), converted.finish_cloned()));
+        }
+    }
     if !channels.is_empty() {
-        write_csv(
-            file_name,
-            cg.master_channel_name.as_deref().map(str::to_string),
-            u64::from(rec_id),
-            &channels,
-        )?;
+        let group_suffix = cg
+            .master_channel_name
+            .as_deref()
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("no_master_{}", cg.block_position));
+        write_csv(file_name, &group_suffix, &channels)?;
     }
     Ok(())
 }
@@ -109,12 +117,10 @@ fn mdf3_cg_to_csv(file_name: &str, _mdfinfo3: &MdfInfo3, rec_id: u16, cg: &Cg3) 
 /// Uses Arrow's `ArrayFormatter` (enabled by the `prettyprint` feature).
 fn write_csv(
     file_name: &str,
-    master_channel: Option<String>,
-    rec_id: u64,
+    group_suffix: &str,
     channels: &[(&str, Arc<dyn arrow::array::Array>)],
 ) -> Result<()> {
     let base_path = Path::new(file_name);
-    let master_suffix = master_channel.unwrap_or_else(|| rec_id.to_string());
     let stem = if base_path
         .extension()
         .and_then(|s| s.to_str())
@@ -131,7 +137,7 @@ fn write_csv(
     }
     .to_string_lossy();
 
-    let out_file_name = format!("{stem}_{master_suffix}.csv");
+    let out_file_name = format!("{stem}_{group_suffix}.csv");
     let csv_path = base_path.with_file_name(out_file_name);
 
     let file = File::create(&csv_path)

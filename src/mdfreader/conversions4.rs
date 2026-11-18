@@ -75,7 +75,17 @@ fn will_noop_conversion(cn: &Cn4, sharable: &SharableBlocks) -> bool {
         },
         2 | 4 | 5 | 6 | 7 | 8 | 9 => matches!(conv.cc_val, CcVal::Uint(_)),
         11 => matches!(conv.cc_val, CcVal::Real(_)),
-        3 => conv.cc_ref.is_empty() || !matches!(sharable.get_tx(conv.cc_ref[0]), Ok(Some(_))),
+        3 => {
+            let Some(&tx_pos) = conv.cc_ref.first() else {
+                return true;
+            };
+            let Ok(Some(formula)) = sharable.get_tx(tx_pos) else {
+                return true;
+            };
+            let parser = fasteval::Parser::new();
+            let mut slab = fasteval::Slab::new();
+            parser.parse(&formula, &mut slab.ps).is_err()
+        }
         _ => false,
     }
 }
@@ -155,7 +165,15 @@ pub fn converted_output_signature(
                     is_array: false,
                     has_validity,
                 },
-                ChannelData::Complex32(_) | ChannelData::Complex64(_) => ConvertedOutputSignature {
+                ChannelData::Complex32(_) if conv.cc_type <= 3 => ConvertedOutputSignature {
+                    bit_count: 128,
+                    byte_count: 16,
+                    data_type: if machine_endian { 16 } else { 15 },
+                    is_vlsd: false,
+                    is_array: false,
+                    has_validity,
+                },
+                ChannelData::Complex64(_) => ConvertedOutputSignature {
                     bit_count: 128,
                     byte_count: 16,
                     data_type: if machine_endian { 16 } else { 15 },
@@ -2484,4 +2502,64 @@ pub fn eval_ca_classification(
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arrow::array::UInt16Array;
+
+    #[test]
+    fn unparseable_formula_signature_matches_raw_type() {
+        let mut sharable = SharableBlocks::default();
+        sharable.create_tx(100, "invalid((formula".to_string());
+        let cc = Cc4Block {
+            cc_type: 3,
+            cc_ref: vec![100],
+            ..Default::default()
+        };
+        sharable.cc.insert(200, cc);
+        let cn = Cn4 {
+            block: Cn4Block {
+                cn_cc_conversion: 200,
+                ..Default::default()
+            },
+            data: ChannelData::UInt16(UInt16Array::from(vec![1u16, 2u16])),
+            ..Default::default()
+        };
+        let sig = converted_output_signature(&cn, &sharable, false).unwrap();
+        assert_eq!(sig.bit_count, 16);
+        assert_eq!(sig.byte_count, 2);
+        let out = convert_channel_data_cow(&cn, &sharable).unwrap();
+        assert!(matches!(&*out, ChannelData::UInt16(_)));
+    }
+
+    #[test]
+    fn complex32_tabular_signature_preserves_64bit_width() {
+        use crate::data_holder::tensor_arrow::Order;
+        use arrow::array::Float32Array;
+        let mut sharable = SharableBlocks::default();
+        let cc = Cc4Block {
+            cc_type: 4,
+            cc_val: CcVal::Real(vec![0.0, 0.0, 1.0, 1.0]),
+            ..Default::default()
+        };
+        sharable.cc.insert(300, cc);
+        let cn = Cn4 {
+            block: Cn4Block {
+                cn_cc_conversion: 300,
+                ..Default::default()
+            },
+            data: ChannelData::Complex32(ComplexArrow::new_from_array(
+                Float32Array::from(vec![1.0f32, 2.0f32]),
+                None,
+                vec![1, 2],
+                Order::RowMajor,
+            )),
+            ..Default::default()
+        };
+        let sig = converted_output_signature(&cn, &sharable, false).unwrap();
+        assert_eq!(sig.bit_count, 64);
+        assert_eq!(sig.byte_count, 8);
+    }
 }

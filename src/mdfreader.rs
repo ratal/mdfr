@@ -525,11 +525,9 @@ impl Mdf {
         channel_names: HashSet<String>,
     ) -> Result<(), Error> {
         // If all requested channels already have in-memory data, skip file IO
-        let all_loaded = channel_names.iter().all(|name| {
-            self.mdf_info
-                .get_channel_data(name)
-                .is_some_and(|d| !d.is_empty())
-        });
+        let all_loaded = channel_names
+            .iter()
+            .all(|name| self.mdf_info.has_channel_data(name));
         if all_loaded {
             return Ok(());
         }
@@ -549,6 +547,13 @@ impl Mdf {
         bytes: &[u8],
         channel_names: HashSet<String>,
     ) -> Result<(), Error> {
+        // If all requested channels already have in-memory data, skip decoding
+        let all_loaded = channel_names
+            .iter()
+            .all(|name| self.mdf_info.has_channel_data(name));
+        if all_loaded {
+            return Ok(());
+        }
         let mut rdr = SliceCursor::new(bytes);
         self.load_channels_data_from_cursor(&mut rdr, channel_names)
     }
@@ -557,16 +562,6 @@ impl Mdf {
         rdr: &mut SliceCursor<'_>,
         channel_names: HashSet<String>,
     ) -> Result<(), Error> {
-        // If all requested channels already have in-memory data, skip decoding
-        let all_loaded = channel_names.iter().all(|name| {
-            self.mdf_info
-                .get_channel_data(name)
-                .is_some_and(|d| !d.is_empty())
-        });
-        if all_loaded {
-            return Ok(());
-        }
-
         match &mut self.mdf_info {
             MdfInfo::V3(_mdfinfo3) => {
                 mdfreader3(rdr, self, &channel_names).with_context(|| {

@@ -450,8 +450,10 @@ pub fn mdfwriter4(
             }
         }
     }
-    // last DG must point to null DGBlock
-    if let Some(last_dg) = new_info.dg.get_mut(&last_dg_pointer) {
+    // last DG must point to null DGBlock (or hd_dg_first = 0 if no DGs were written)
+    if new_info.dg.is_empty() {
+        new_info.hd_block.hd_dg_first = 0;
+    } else if let Some(last_dg) = new_info.dg.get_mut(&last_dg_pointer) {
         last_dg.block.dg_dg_next = 0;
     }
 
@@ -1830,7 +1832,7 @@ fn create_blocks(
             cg_block.cg_cg_master = Some(*cg_cg_master);
             cg_block.cg_flags = 0b1000;
         }
-        cg_block.cg_cycle_count = cg.block.cg_cycle_count;
+        cg_block.cg_cycle_count = cn.data.len() as u64;
 
         // CN Block
         let cn_position = pointer + cg_block_header.hdr_len as i64;
