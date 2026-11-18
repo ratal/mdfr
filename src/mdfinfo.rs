@@ -58,17 +58,21 @@ impl MdfInfo {
     pub fn new(file_name: &str) -> Result<MdfInfo, Error> {
         let mapped = MappedFile::open(file_name)
             .with_context(|| format!("Cannot find the file {file_name}"))?;
+        mapped.advise_random();
         info!("Opened file {file_name}");
-        Self::from_bytes_with_name(&mapped, file_name)
+        let rdr = SliceCursor::from_mapped(&mapped);
+        let res = Self::from_cursor_with_name(rdr, file_name);
+        mapped.advise_dontneed_range(0, mapped.len());
+        res
     }
 
     /// parses MdfInfo directly from an in-memory byte slice
     pub fn from_bytes(bytes: &[u8]) -> Result<MdfInfo, Error> {
-        Self::from_bytes_with_name(bytes, "")
+        let rdr = SliceCursor::new(bytes);
+        Self::from_cursor_with_name(rdr, "")
     }
 
-    fn from_bytes_with_name(bytes: &[u8], file_name: &str) -> Result<MdfInfo, Error> {
-        let mut rdr = SliceCursor::new(bytes);
+    fn from_cursor_with_name(mut rdr: SliceCursor<'_>, file_name: &str) -> Result<MdfInfo, Error> {
         // Read beginning of ID Block
         let slice = rdr
             .read_slice(64)

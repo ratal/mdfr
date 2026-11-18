@@ -7,16 +7,111 @@ use num::NumCast;
 use num::abs;
 use num::cast::AsPrimitive;
 use rustc_hash::FxHashMap;
+use std::borrow::Cow;
 
 use crate::data_holder::channel_data::ChannelData;
 use crate::mdfinfo::mdfinfo3::{Cn3, Conversion, Dg3, SharableBlocks3};
 use crate::mdfreader::conversions4::{
-    SingleVarNamespace, linear_calculation, rational_calculation,
+    ConvertedOutputSignature, SingleVarNamespace, channel_data_signature, linear_calculation,
+    rational_calculation,
 };
 use fasteval::Evaler;
 use fasteval::{Compiler, Instruction, Slab};
 use log::warn;
 use rayon::prelude::*;
+
+fn will_noop_conversion_3(cn: &Cn3, sharable: &SharableBlocks3) -> bool {
+    if cn.is_converted || cn.data.is_empty() {
+        return true;
+    }
+    let Some((_block, conv)) = sharable.cc.get(&cn.block1.cn_cc_conversion) else {
+        return true;
+    };
+    match conv {
+        Conversion::Identity => true,
+        Conversion::Linear(cc_val) => {
+            cc_val.len() >= 2 && cc_val[0] == 0.0 && abs(cc_val[1] - 1.0) < 1e-12
+        }
+        Conversion::TextTable(cc_val_ref) => cc_val_ref.is_empty(),
+        _ => false,
+    }
+}
+
+/// Converts `cn.data` on the fly without mutating `cn` in place, borrowing `cn.data` when no conversion applies.
+pub fn convert_channel_data_cow_3<'a>(
+    cn: &'a Cn3,
+    sharable: &SharableBlocks3,
+) -> Result<Cow<'a, ChannelData>, Error> {
+    if will_noop_conversion_3(cn, sharable) {
+        return Ok(Cow::Borrowed(&cn.data));
+    }
+    let mut tmp = Cn3 {
+        unique_name: cn.unique_name.clone(),
+        block1: cn.block1.clone(),
+        data: cn.data.clone(),
+        is_converted: false,
+        ..Default::default()
+    };
+    convert_channel(&mut tmp, sharable)?;
+    Ok(Cow::Owned(tmp.data))
+}
+
+/// Computes the post-conversion MDF4 block signature for an MDF3 channel without converting numeric channels upfront.
+pub fn converted_output_signature_3(
+    cn: &Cn3,
+    sharable: &SharableBlocks3,
+    machine_endian: bool,
+) -> Result<ConvertedOutputSignature, Error> {
+    let raw = &cn.data;
+    if raw.is_empty() || will_noop_conversion_3(cn, sharable) {
+        return Ok(channel_data_signature(raw, machine_endian));
+    }
+    let (_block, conv) = sharable
+        .cc
+        .get(&cn.block1.cn_cc_conversion)
+        .expect("checked in will_noop_conversion_3");
+    match conv {
+        Conversion::Linear(_)
+        | Conversion::TabularInterpolation(_)
+        | Conversion::Tabular(_)
+        | Conversion::Rational(_)
+        | Conversion::Formula(_)
+        | Conversion::Polynomial(_)
+        | Conversion::Exponential(_)
+        | Conversion::Logarithmic(_) => {
+            let is_numeric_scalar = matches!(
+                raw,
+                ChannelData::Int8(_)
+                    | ChannelData::UInt8(_)
+                    | ChannelData::Int16(_)
+                    | ChannelData::UInt16(_)
+                    | ChannelData::Int32(_)
+                    | ChannelData::UInt32(_)
+                    | ChannelData::Float32(_)
+                    | ChannelData::Int64(_)
+                    | ChannelData::UInt64(_)
+                    | ChannelData::Float64(_)
+            );
+            if is_numeric_scalar {
+                Ok(ConvertedOutputSignature {
+                    bit_count: 64,
+                    byte_count: 8,
+                    data_type: if machine_endian { 5 } else { 4 },
+                    is_vlsd: false,
+                    is_array: false,
+                    has_validity: raw.validity().is_some(),
+                })
+            } else {
+                Ok(channel_data_signature(raw, machine_endian))
+            }
+        }
+        Conversion::Identity => Ok(channel_data_signature(raw, machine_endian)),
+        Conversion::TextTable(_) | Conversion::TextRangeTable(_) => {
+            let converted = convert_channel_data_cow_3(cn, sharable)?;
+            Ok(channel_data_signature(&converted, machine_endian))
+        }
+    }
+}
 
 /// convert all channel arrays into physical values as required by CCBlock content
 pub fn convert_channel(cn: &mut Cn3, sharable: &SharableBlocks3) -> Result<(), Error> {

@@ -1080,6 +1080,7 @@ fn read_independent_channel_data<'a>(
             .context("Could not read independent DV/DT block data")?;
         position = cn_data + hdr.len as i64;
         read_one_channel_array(slice, cn, cycle_count)?;
+        rdr.advise_dontneed_slice(slice);
     } else if id == *b"##DZ" {
         let (dt, hdr) = parse_dz(rdr)?;
         position = cn_data + hdr.len as i64;

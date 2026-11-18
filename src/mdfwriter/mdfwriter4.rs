@@ -17,9 +17,14 @@ use std::{
     thread,
 };
 
-use super::mdfwriter3::convert3to4;
+use super::mdfwriter3::convert3to4_unconverted;
+use crate::mdfinfo::mdfinfo3::{Cn3, MdfInfo3};
 use crate::mdfinfo::mdfinfo4::Blockheader4Short;
 use crate::mdfinfo::mdfinfo4::CompressionAlgorithm;
+use crate::mdfreader::conversions3::{convert_channel_data_cow_3, converted_output_signature_3};
+use crate::mdfreader::conversions4::{
+    ConvertedOutputSignature, convert_channel_data_cow, converted_output_signature,
+};
 use crate::{
     data_holder::channel_data::{ChannelData, data_type_init},
     mdfinfo::{
@@ -44,16 +49,40 @@ use std::borrow::Cow;
 use std::fs::File;
 
 enum SourceInfo<'a> {
-    Borrowed(&'a MdfInfo4),
-    Owned(Box<MdfInfo4>),
+    V4(&'a MdfInfo4),
+    V3 {
+        info3: &'a MdfInfo3,
+        meta4: Box<MdfInfo4>,
+    },
 }
 
 impl Deref for SourceInfo<'_> {
     type Target = MdfInfo4;
     fn deref(&self) -> &Self::Target {
         match self {
-            SourceInfo::Borrowed(info) => info,
-            SourceInfo::Owned(info) => info,
+            SourceInfo::V4(info) => info,
+            SourceInfo::V3 { meta4, .. } => meta4,
+        }
+    }
+}
+
+impl SourceInfo<'_> {
+    fn channel_output_signature(
+        &self,
+        cn: &Cn4,
+        machine_endian: bool,
+    ) -> Result<ConvertedOutputSignature> {
+        match self {
+            SourceInfo::V4(info4) => {
+                converted_output_signature(cn, &info4.sharable, machine_endian)
+            }
+            SourceInfo::V3 { info3, .. } => {
+                if let Some(cn3) = info3.get_cn_by_name(&cn.unique_name) {
+                    converted_output_signature_3(cn3, &info3.sharable, machine_endian)
+                } else {
+                    converted_output_signature(cn, &self.sharable, machine_endian)
+                }
+            }
         }
     }
 }
@@ -83,16 +112,15 @@ pub fn mdfwriter4(
     file_name: &str,
     compression: CompressionAlgorithm,
 ) -> Result<Mdf> {
-    if matches!(mdf.mdf_info, MdfInfo::V3(_)) {
-        mdf.convert_all_channels()
-            .context("failed converting channels before writing")?;
-    }
     let info: SourceInfo<'_> = match &mdf.mdf_info {
-        MdfInfo::V3(mdfinfo3) => SourceInfo::Owned(Box::new(
-            convert3to4(mdfinfo3, file_name)
-                .context("failed converting mdf version 3 into version 4")?,
-        )),
-        MdfInfo::V4(mdfinfo4) => SourceInfo::Borrowed(mdfinfo4),
+        MdfInfo::V3(mdfinfo3) => SourceInfo::V3 {
+            info3: mdfinfo3,
+            meta4: Box::new(
+                convert3to4_unconverted(mdfinfo3, file_name)
+                    .context("failed converting mdf version 3 into version 4")?,
+            ),
+        },
+        MdfInfo::V4(mdfinfo4) => SourceInfo::V4(mdfinfo4),
     };
     let n_channels = info.get_channel_names_set().len();
     let mut new_info = MdfInfo4::new(file_name, n_channels);
@@ -632,8 +660,21 @@ pub fn mdfwriter4(
         }
     }
 
+    enum WriteChunk {
+        Owned {
+            pos: u64,
+            buffer: Vec<u8>,
+        },
+        DirectDv {
+            pos: u64,
+            dv_block: Blockheader4,
+            data: ChannelData,
+            pad: usize,
+        },
+    }
+
     // thread writing the channels data first as block size can be unknown due to compression
-    let (tx, rx) = bounded::<(u64, Vec<u8>)>(64);
+    let (tx, rx) = bounded::<WriteChunk>(16);
     let fname = Arc::new(Mutex::new(file_name.to_string()));
     let sfname = Arc::clone(&fname);
     let writer_handle = thread::spawn(move || -> Result<(), Error> {
@@ -646,15 +687,48 @@ pub fn mdfwriter4(
             .truncate(true)
             .open(&*file)
             .context("Cannot create the file")?;
-        let mut writer = BufWriter::new(&f);
+        let mut writer = BufWriter::with_capacity(256 * 1024, &f);
+        const ZEROS: [u8; 8] = [0u8; 8];
 
-        for (pos, buffer) in rx {
-            writer
-                .seek(SeekFrom::Start(pos))
-                .context("Could not reach position to write data blocks")?;
-            writer
-                .write_all(&buffer)
-                .context("Could not write data blocks buffer")?;
+        for chunk in rx {
+            match chunk {
+                WriteChunk::Owned { pos, buffer } => {
+                    writer
+                        .seek(SeekFrom::Start(pos))
+                        .context("Could not reach position to write data blocks")?;
+                    writer
+                        .write_all(&buffer)
+                        .context("Could not write data blocks buffer")?;
+                }
+                WriteChunk::DirectDv {
+                    pos,
+                    dv_block,
+                    data,
+                    pad,
+                } => {
+                    writer
+                        .seek(SeekFrom::Start(pos))
+                        .context("Could not reach position to write direct DV block")?;
+                    writer
+                        .write_le(&dv_block)
+                        .context("Could not write DVBlock")?;
+                    if let Some(raw) = data.as_raw_byte_slice() {
+                        writer
+                            .write_all(raw)
+                            .context("Could not write direct DV data bytes")?;
+                    } else {
+                        let bytes = data.to_bytes()?;
+                        writer
+                            .write_all(&bytes)
+                            .context("Could not write DV data bytes")?;
+                    }
+                    if pad > 0 {
+                        writer
+                            .write_all(&ZEROS[..pad])
+                            .context("Could not pad DV block")?;
+                    }
+                }
+            }
         }
         writer.flush().context("Could not flush data blocks")?;
         f.sync_all().context("Could not sync data blocks to disk")?;
@@ -683,38 +757,68 @@ pub fn mdfwriter4(
             invalid_block: Option<(DataBlock, Vec<u8>)>,
             has_inval: bool,
         },
+        DirectDv {
+            dg_pos: i64,
+            offset: i64,
+            dv_block: Blockheader4,
+            data: ChannelData,
+            pad: usize,
+        },
     }
 
-    const MAX_WRITE_BATCH_CHANNELS: usize = 64;
-    const MAX_WRITE_BATCH_BYTES: usize = 32 * 1024 * 1024;
+    #[derive(Clone, Copy)]
+    enum WorkSource<'a> {
+        V4(&'a Cn4),
+        V3(&'a Cn3),
+    }
 
-    let info_ref = &*info;
-    let mut work_items: Vec<(i64, u64, i64, &Cn4, usize)> = Vec::new();
+    const MAX_WRITE_BATCH_CHANNELS: usize = 16;
+    const MAX_WRITE_BATCH_BYTES: usize = 16 * 1024 * 1024;
+
+    let mut work_items: Vec<(i64, u64, i64, WorkSource<'_>, usize)> = Vec::new();
     for (&dg_pos, dg) in &new_info.dg {
         for (&cg_id, cg) in &dg.cg {
             for (&cn_pos, cn) in &cg.cn {
-                if let Some(src_cn) = info_ref.get_channel_id(&cn.unique_name).and_then(
-                    |(_, src_dg_pos, (_, src_cg_id), (_, src_cn_pos))| {
-                        info_ref
-                            .dg
-                            .get(src_dg_pos)
-                            .and_then(|d| d.cg.get(src_cg_id))
-                            .and_then(|c| c.cn.get(src_cn_pos))
-                    },
-                ) && !src_cn.data.is_empty()
-                {
-                    let est_bytes = match &src_cn.data {
-                        ChannelData::Utf8(a) => a.values().len(),
-                        ChannelData::VariableSizeByteArray(a) => a.values().len(),
-                        d => d.len().saturating_mul(8),
-                    };
-                    work_items.push((dg_pos, cg_id, cn_pos, src_cn, est_bytes));
+                let src_opt: Option<(WorkSource<'_>, usize)> = match &info {
+                    SourceInfo::V4(info4) => info4
+                        .get_channel_id(&cn.unique_name)
+                        .and_then(|(_, src_dg_pos, (_, src_cg_id), (_, src_cn_pos))| {
+                            info4
+                                .dg
+                                .get(src_dg_pos)
+                                .and_then(|d| d.cg.get(src_cg_id))
+                                .and_then(|c| c.cn.get(src_cn_pos))
+                        })
+                        .filter(|c| !c.data.is_empty())
+                        .map(|c| {
+                            let est = match &c.data {
+                                ChannelData::Utf8(a) => a.values().len(),
+                                ChannelData::VariableSizeByteArray(a) => a.values().len(),
+                                d => d.len().saturating_mul(8),
+                            };
+                            (WorkSource::V4(c), est)
+                        }),
+                    SourceInfo::V3 { info3, .. } => info3
+                        .get_cn_by_name(&cn.unique_name)
+                        .filter(|c| !c.data.is_empty())
+                        .map(|c| {
+                            let est = match &c.data {
+                                ChannelData::Utf8(a) => a.values().len(),
+                                ChannelData::VariableSizeByteArray(a) => a.values().len(),
+                                d => d.len().saturating_mul(8),
+                            };
+                            (WorkSource::V3(c), est)
+                        }),
+                };
+                if let Some((src, est_bytes)) = src_opt {
+                    work_items.push((dg_pos, cg_id, cn_pos, src, est_bytes));
                 }
             }
         }
     }
     work_items.sort_unstable_by_key(|&(dg_pos, cg_id, cn_pos, _, _)| (dg_pos, cg_id, cn_pos));
 
+    let info_ref = &*info;
     let mut data_pointer = pointer;
     let mut item_idx = 0usize;
     while item_idx < work_items.len() {
@@ -734,15 +838,43 @@ pub fn mdfwriter4(
         let prepared_blocks: Vec<PreparedChannelData> = batch
             .into_par_iter()
             .map(
-                |&(dg_pos, cg_id, cn_pos, src_cn, _)| -> Result<PreparedChannelData, Error> {
-                    let data_cow: Cow<'_, ChannelData> =
-                        crate::mdfreader::conversions4::convert_channel_data_cow(
-                            src_cn,
-                            &info_ref.sharable,
-                        )?;
+                |&(dg_pos, cg_id, cn_pos, src, _)| -> Result<PreparedChannelData, Error> {
+                    let data_cow: Cow<'_, ChannelData> = match src {
+                        WorkSource::V4(src_cn) => {
+                            convert_channel_data_cow(src_cn, &info_ref.sharable)?
+                        }
+                        WorkSource::V3(src_cn3) => {
+                            let SourceInfo::V3 { info3, .. } = &info else {
+                                unreachable!()
+                            };
+                            convert_channel_data_cow_3(src_cn3, &info3.sharable)?
+                        }
+                    };
                     let data: &ChannelData = &data_cow;
                     let m = data.validity();
                     let is_vlsd = is_vlsd_data(data);
+
+                    if !is_vlsd
+                        && compression == CompressionAlgorithm::NoCompression
+                        && m.is_none()
+                        && let Some(raw) = data.as_raw_byte_slice()
+                    {
+                        let raw_len = raw.len();
+                        let byte_aligned = (8 - (raw_len % 8)) % 8;
+                        let mut dv_block = Blockheader4 {
+                            hdr_id: [35, 35, 68, 86], // ##DV
+                            ..Default::default()
+                        };
+                        dv_block.hdr_len += raw_len as u64;
+                        let offset = dv_block.hdr_len as i64 + byte_aligned as i64;
+                        return Ok(PreparedChannelData::DirectDv {
+                            dg_pos,
+                            offset,
+                            dv_block,
+                            data: data_cow.into_owned(),
+                            pad: byte_aligned,
+                        });
+                    }
 
                     if is_vlsd {
                         // Standard sorted VLSD:
@@ -885,10 +1017,16 @@ pub fn mdfwriter4(
                         invalid_block,
                         dv_offset as usize,
                     )?;
-                    tx.send((sd_pos as u64, sd_buffer))
-                        .context("Channel disconnected")?;
-                    tx.send((dv_pos as u64, dv_buffer))
-                        .context("Channel disconnected")?;
+                    tx.send(WriteChunk::Owned {
+                        pos: sd_pos as u64,
+                        buffer: sd_buffer,
+                    })
+                    .context("Channel disconnected")?;
+                    tx.send(WriteChunk::Owned {
+                        pos: dv_pos as u64,
+                        buffer: dv_buffer,
+                    })
+                    .context("Channel disconnected")?;
                     if let Some(dg) = new_info.dg.get_mut(&dg_pos) {
                         dg.block.dg_data = dv_pos;
                         if let Some(cg) = dg.cg.get_mut(&cg_id) {
@@ -923,8 +1061,11 @@ pub fn mdfwriter4(
                         invalid_block,
                         offset as usize,
                     )?;
-                    tx.send((pos as u64, buffer))
-                        .context("Channel disconnected")?;
+                    tx.send(WriteChunk::Owned {
+                        pos: pos as u64,
+                        buffer,
+                    })
+                    .context("Channel disconnected")?;
                     if let Some(dg) = new_info.dg.get_mut(&dg_pos) {
                         dg.block.dg_data = pos;
                         if has_inval && let Some(cg) = dg.cg.get_mut(&cg_id) {
@@ -934,6 +1075,26 @@ pub fn mdfwriter4(
                                 cn.block.cn_inval_bit_pos = 0;
                             }
                         }
+                    }
+                }
+                PreparedChannelData::DirectDv {
+                    dg_pos,
+                    offset,
+                    dv_block,
+                    data,
+                    pad,
+                } => {
+                    let pos = data_pointer;
+                    data_pointer += offset;
+                    tx.send(WriteChunk::DirectDv {
+                        pos: pos as u64,
+                        dv_block,
+                        data,
+                        pad,
+                    })
+                    .context("Channel disconnected")?;
+                    if let Some(dg) = new_info.dg.get_mut(&dg_pos) {
+                        dg.block.dg_data = pos;
                     }
                 }
             }
@@ -1637,7 +1798,7 @@ fn create_dz_di(
 #[allow(clippy::too_many_arguments)]
 fn create_blocks(
     new_info: &mut MdfInfo4,
-    info: &MdfInfo4,
+    info: &SourceInfo<'_>,
     mut pointer: i64,
     cg: &Cg4,
     cn: &Cn4,
@@ -1646,11 +1807,7 @@ fn create_blocks(
     si_position_map: &HashMap<i64, i64>,
 ) -> Result<i64> {
     let machine_endian: bool = cfg!(target_endian = "big");
-    let sig = crate::mdfreader::conversions4::converted_output_signature(
-        cn,
-        &info.sharable,
-        machine_endian,
-    )?;
+    let sig = info.channel_output_signature(cn, machine_endian)?;
     let bit_count = sig.bit_count;
     if !cn.data.is_empty() && bit_count > 0 {
         let byte_count = sig.byte_count;

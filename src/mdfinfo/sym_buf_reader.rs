@@ -45,14 +45,26 @@ impl MappedFile {
         let _ = self;
     }
 
+    /// Hints to the OS kernel that the mapped file will be accessed in random order
+    /// (suppresses aggressive kernel readahead across scattered metadata blocks).
+    #[inline]
+    pub fn advise_random(&self) {
+        #[cfg(unix)]
+        if let Self::Mmap(m) = self {
+            let _ = m.advise(memmap2::Advice::Random);
+        }
+        #[cfg(not(unix))]
+        let _ = self;
+    }
+
     /// Hints to the OS kernel that clean file-backed pages in `[start, start + len)`
     /// are no longer needed in the process's resident set (`MADV_DONTNEED`), rounding
-    /// inward to page boundaries and skipping spans smaller than 1 MiB.
+    /// inward to page boundaries and skipping spans smaller than 128 KiB.
     #[inline]
     pub fn advise_dontneed_range(&self, start: usize, len: usize) {
         #[cfg(unix)]
         if let Self::Mmap(m) = self {
-            const MIN_ADVISE_BYTES: usize = 1_048_576;
+            const MIN_ADVISE_BYTES: usize = 131_072;
             if len < MIN_ADVISE_BYTES {
                 return;
             }

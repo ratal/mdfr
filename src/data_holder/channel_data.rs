@@ -770,18 +770,36 @@ impl ChannelData {
                 Ok(bytes)
             }
             // All 22 numeric variants (primitives, complex, ArrayD)
-            _ => {
-                dispatch_numeric!(self, a => {
-                    let slice = a.values_slice();
-                    let byte_slice = unsafe {
-                        core::slice::from_raw_parts(
-                            slice.as_ptr().cast::<u8>(),
-                            core::mem::size_of_val(slice),
-                        )
-                    };
-                    Ok(byte_slice.to_vec())
-                })
+            _ => Ok(self
+                .as_raw_byte_slice()
+                .expect("all remaining ChannelData variants are fixed-width numeric")
+                .to_vec()),
+        }
+    }
+    /// Borrows contiguous raw record bytes without allocation for fixed-width numeric,
+    /// complex, tensor, and unsliced fixed-size binary arrays.
+    pub fn as_raw_byte_slice(&self) -> Option<&[u8]> {
+        match self {
+            ChannelData::Utf8(_)
+            | ChannelData::VariableSizeByteArray(_)
+            | ChannelData::Union(_) => None,
+            ChannelData::FixedSizeByteArray(a) => {
+                if a.offset() == 0 && a.values().len() == a.len() * (a.value_length() as usize) {
+                    Some(a.values().as_slice())
+                } else {
+                    None
+                }
             }
+            _ => Some(dispatch_numeric!(self, a => {
+                let slice = a.values_slice();
+                // SAFETY: Every primitive, complex, and tensor element is POD and aligned.
+                unsafe {
+                    core::slice::from_raw_parts(
+                        slice.as_ptr().cast::<u8>(),
+                        core::mem::size_of_val(slice),
+                    )
+                }
+            })),
         }
     }
     /// returns the number of dimensions of the channel

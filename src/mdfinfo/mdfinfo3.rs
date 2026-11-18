@@ -108,7 +108,12 @@ impl MdfInfo3 {
         }
         desc
     }
-    /// returns the master channel associated to the input channel name
+    /// Returns an immutable reference to `Cn3` by channel name if present.
+    pub(crate) fn get_cn_by_name(&self, channel_name: &str) -> Option<&Cn3> {
+        let (_master, dg_pos, (_cg_pos, rec_id), cn_pos) = self.get_channel_id(channel_name)?;
+        self.dg.get(dg_pos)?.cg.get(rec_id)?.cn.get(cn_pos)
+    }
+    /// Returns the master channel associated to the input channel name
     pub fn get_channel_master(&self, channel_name: &str) -> Option<String> {
         let mut master = None;
         if let Some((m, _dg_pos, (_cg_pos, _rec_idd), _cn_pos)) = self.get_channel_id(channel_name)

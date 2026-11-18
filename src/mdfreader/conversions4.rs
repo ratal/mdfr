@@ -31,7 +31,10 @@ pub struct ConvertedOutputSignature {
     pub has_validity: bool,
 }
 
-fn channel_data_signature(data: &ChannelData, machine_endian: bool) -> ConvertedOutputSignature {
+pub(crate) fn channel_data_signature(
+    data: &ChannelData,
+    machine_endian: bool,
+) -> ConvertedOutputSignature {
     ConvertedOutputSignature {
         bit_count: data.bit_count(),
         byte_count: data.byte_count(),

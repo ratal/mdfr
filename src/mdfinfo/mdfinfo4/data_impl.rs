@@ -75,6 +75,7 @@ pub fn parse_dz(rdr: &mut SliceCursor<'_>) -> Result<(Vec<u8>, Dz4Block)> {
         slice,
         block.dz_org_data_length,
     )?;
+    rdr.advise_dontneed_slice(slice);
     block.dz_org_data_length = data.len() as u64;
     Ok((data, block))
 }
