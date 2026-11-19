@@ -12,7 +12,7 @@ use mdfr_core::blocks::{fh_block::FhBlock, hd_block::Hd4};
 use mdfr_core::compress::CompressionAlgorithm;
 use mdfr_core::logger::recover::recover_in_place;
 use rustc_hash::FxHashMap;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::Cursor;
 use tempfile::NamedTempFile;
 
@@ -29,7 +29,6 @@ fn test_mdf4_invalidation_flag_and_vlsd_no_false_nulls() -> Result<()> {
         },
         cn: HashMap::with_hasher(Default::default()),
         master_channel_name: None,
-        channel_names: HashSet::new(),
         block_position: 0,
         record_length: 13,
         vlsd_cg: None,
@@ -41,7 +40,7 @@ fn test_mdf4_invalidation_flag_and_vlsd_no_false_nulls() -> Result<()> {
     let mut mask_builder = BooleanBufferBuilder::new(3);
     mask_builder.append_n(3, true);
     let cn_invalid = Cn4 {
-        unique_name: "ch_with_inval".to_string(),
+        unique_name: std::sync::Arc::from("ch_with_inval"),
         block: Cn4Block {
             cn_type: 0,
             cn_flags: CN_F_INVALID,
@@ -49,13 +48,17 @@ fn test_mdf4_invalidation_flag_and_vlsd_no_false_nulls() -> Result<()> {
             ..Default::default()
         },
         data: ChannelData::UInt32(UInt32Array::from(vec![10, 20, 30])),
-        invalid_mask: Some((Some(mask_builder), 0, 0x01)),
+        invalid_mask: Some(mdfr::mdfinfo::mdfinfo4::InvalidMaskState::Builder {
+            builder: Box::new(mask_builder),
+            byte_pos: 0,
+            byte_mask: 0x01,
+        }),
         ..Default::default()
     };
 
     // Channel 2: does NOT have CN_F_INVALID -> must NOT get nulls even though invalid_bytes are 0x01
     let cn_no_inval = Cn4 {
-        unique_name: "ch_no_inval".to_string(),
+        unique_name: std::sync::Arc::from("ch_no_inval"),
         block: Cn4Block {
             cn_type: 0,
             cn_flags: 0,
@@ -69,7 +72,7 @@ fn test_mdf4_invalidation_flag_and_vlsd_no_false_nulls() -> Result<()> {
 
     // Channel 3: VLSD (cn_type == 1) without CN_F_INVALID -> must NOT get nulls
     let cn_vlsd = Cn4 {
-        unique_name: "ch_vlsd".to_string(),
+        unique_name: std::sync::Arc::from("ch_vlsd"),
         block: Cn4Block {
             cn_type: 1,
             cn_flags: 0,
@@ -142,7 +145,7 @@ fn test_mdfwriter4_alignment_sorted_vlsd_and_cc_units() -> Result<()> {
         for dg in v4.dg.values() {
             for cg in dg.cg.values() {
                 for cn in cg.cn.values() {
-                    if cn.unique_name == "label" {
+                    if &*cn.unique_name == "label" {
                         found_vlsd = true;
                         assert_eq!(cn.block.cn_type, 1, "VLSD channel must have cn_type == 1");
                         assert_ne!(
@@ -154,7 +157,7 @@ fn test_mdfwriter4_alignment_sorted_vlsd_and_cc_units() -> Result<()> {
                             "Sorted VLSD must write dg_data offsets"
                         );
                     }
-                    if cn.unique_name == "time"
+                    if &*cn.unique_name == "time"
                         && info.get_channel_unit("time")?.as_deref() == Some("s")
                     {
                         found_time_unit = true;

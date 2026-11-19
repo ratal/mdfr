@@ -131,7 +131,7 @@ pub(super) fn read_meta_data(
         };
         let md = MetaData {
             block,
-            raw_data: raw_data.into_inner().to_vec(),
+            raw_data: raw_data.into_inner().into(),
             block_type,
             parent_block_type,
             md_comment: None,
@@ -202,13 +202,13 @@ impl SharableBlocks {
         }
         self.md_tx
             .get(&position)
-            .and_then(|md| md.md_comment.as_ref())
+            .and_then(|md| md.md_comment.as_deref())
     }
     /// Returns HD comment, assumes already parsed
     pub fn get_hd_comments(&self, position: i64) -> Option<&HdComment> {
         if let Some(md) = self.md_tx.get(&position)
             && md.block_type == MetaDataBlockType::MdParsed
-            && let Some(MdComment::Hd(hd)) = &md.md_comment
+            && let Some(MdComment::Hd(hd)) = md.md_comment.as_deref()
         {
             return Some(hd);
         }

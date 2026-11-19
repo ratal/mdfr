@@ -29,7 +29,7 @@ impl<'a> ChannelIndex<'a> {
             .collect();
         let name_to_rec = cg_channels
             .iter()
-            .map(|(rec_pos, cn)| (cn.unique_name.as_str(), *rec_pos))
+            .map(|(rec_pos, cn)| (cn.unique_name.as_ref(), *rec_pos))
             .collect();
         Self {
             channels: cg_channels,
@@ -375,7 +375,7 @@ pub fn decode_channel_union(
         stream_state.bit_position = start_position;
 
         let (value, _) = decode_single_channel_value(data, cn, stream_state)?;
-        result.insert(cn.unique_name.clone(), value);
+        result.insert(cn.unique_name.to_string(), value);
 
         // Track the furthest position reached
         if stream_state.bit_position > max_end_position {
@@ -417,7 +417,7 @@ pub fn decode_channel_variant(
         Some(idx) if idx < option_channels.len() => {
             let cn = option_channels[idx];
             let (value, _) = decode_single_channel_value(data, cn, stream_state)?;
-            Ok((idx, cn.unique_name.clone(), value))
+            Ok((idx, cn.unique_name.to_string(), value))
         }
         _ => {
             // No matching option - this is a valid case per spec (data might be invalid)

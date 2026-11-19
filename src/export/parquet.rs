@@ -5,7 +5,9 @@ use crate::{
         mdfinfo3::{Cg3, Cn3, MdfInfo3},
         mdfinfo4::{Cg4, Cn4, MdfInfo4},
     },
-    mdfreader::Mdf,
+    mdfreader::{
+        Mdf, conversions3::convert_channel_data_cow_3, conversions4::convert_channel_data_cow,
+    },
 };
 use anyhow::{Context, Error, Result};
 use arrow::{
@@ -36,7 +38,7 @@ pub fn export_to_parquet(
     match &mdf.mdf_info {
         MdfInfo::V4(mdfinfo4) => {
             for dg in mdfinfo4.dg.values() {
-                if dg.cg.values().any(|cg| !cg.channel_names.is_empty()) {
+                if dg.cg.values().any(|cg| !cg.cn.is_empty()) {
                     // Collect CGs to export in parallel
                     let cg_refs: Vec<(&u64, &Cg4)> = dg.cg.iter().collect();
                     cg_refs.par_iter().try_for_each(|(rec_id, cg)| {
@@ -106,18 +108,17 @@ pub fn mdf4_cg_to_parquet(
     cg: &Cg4,
     parquet_compression: Compression,
 ) -> Result<()> {
-    let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
-    let mut fields = SchemaBuilder::with_capacity(cg.channel_names.len());
-    cg.cn
-        .iter()
-        .try_for_each(|(_rec_pos, cn): (&i64, &Cn4)| -> Result<(), Error> {
-            if !cn.data.is_empty() {
-                fields.push(mdf4_field(mdfinfo4, cn));
-                columns.push(cn.data.finish_cloned());
-            }
-            Ok(())
-        })
-        .context("failed extracting data")?;
+    let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.cn.len());
+    let mut fields = SchemaBuilder::with_capacity(cg.cn.len());
+    let mut sorted_cns: Vec<(&i64, &Cn4)> = cg.cn.iter().collect();
+    sorted_cns.sort_unstable_by_key(|&(&rec_pos, _)| rec_pos);
+    for (_rec_pos, cn) in sorted_cns {
+        if !cn.data.is_empty() {
+            let converted = convert_channel_data_cow(cn, &mdfinfo4.sharable)?;
+            fields.push(mdf4_field(mdfinfo4, cn, &converted));
+            columns.push(converted.finish_cloned());
+        }
+    }
     if !columns.is_empty() {
         // write data in file
         if let Some(master_channel) = &cg.master_channel_name {
@@ -126,8 +127,13 @@ pub fn mdf4_cg_to_parquet(
                 .insert("master_channel".to_owned(), master_channel.to_string());
         }
         let finalised_arrow_schema = Arc::new(fields.finish());
+        let group_suffix = cg
+            .master_channel_name
+            .as_deref()
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("no_master_{}", cg.block_position));
         write_data(
-            cg.master_channel_name.clone(),
+            &group_suffix,
             *rec_id,
             file_name,
             parquet_compression,
@@ -152,18 +158,17 @@ pub fn mdf3_cg_to_parquet(
     cg: &Cg3,
     parquet_compression: Compression,
 ) -> Result<()> {
-    let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
-    let mut fields = SchemaBuilder::with_capacity(cg.channel_names.len());
-    cg.cn
-        .iter()
-        .try_for_each(|(_rec_pos, cn): (&u32, &Cn3)| -> Result<(), Error> {
-            if !cn.data.is_empty() {
-                fields.push(mdf3_field(mdfinfo3, cn));
-                columns.push(cn.data.finish_cloned());
-            }
-            Ok(())
-        })
-        .context("failed extracting data")?;
+    let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.cn.len());
+    let mut fields = SchemaBuilder::with_capacity(cg.cn.len());
+    let mut sorted_cns: Vec<(&u32, &Cn3)> = cg.cn.iter().collect();
+    sorted_cns.sort_unstable_by_key(|&(&cn_pos, _)| cn_pos);
+    for (_rec_pos, cn) in sorted_cns {
+        if !cn.data.is_empty() {
+            let converted = convert_channel_data_cow_3(cn, &mdfinfo3.sharable)?;
+            fields.push(mdf3_field(mdfinfo3, cn, &converted));
+            columns.push(converted.finish_cloned());
+        }
+    }
     if !columns.is_empty() {
         // write data in file
         if let Some(master_channel) = &cg.master_channel_name {
@@ -172,8 +177,13 @@ pub fn mdf3_cg_to_parquet(
                 .insert("master_channel".to_owned(), master_channel.to_string());
         }
         let finalised_arrow_schema = Arc::new(fields.finish());
+        let group_suffix = cg
+            .master_channel_name
+            .as_deref()
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("no_master_{}", cg.block_position));
         write_data(
-            cg.master_channel_name.clone(),
+            &group_suffix,
             u64::from(*rec_id),
             file_name,
             parquet_compression,
@@ -215,11 +225,9 @@ fn create_parquet_writer(
     file: &str,
     compression: Compression,
     finalised_arrow_schema: Arc<Schema>,
-    master_channel: Option<String>,
-    rec_id: u64,
+    group_suffix: &str,
 ) -> Result<ArrowWriter<BufWriter<File>>, Error> {
     let base_path = Path::new(file);
-    let master_channel_name = master_channel.unwrap_or_else(|| rec_id.to_string());
     let stem = if base_path
         .extension()
         .and_then(|s| s.to_str())
@@ -236,7 +244,7 @@ fn create_parquet_writer(
     }
     .to_string_lossy();
 
-    let file_name = format!("{stem}_{master_channel_name}.parquet");
+    let file_name = format!("{stem}_{group_suffix}.parquet");
     let buf_path = base_path.with_file_name(&file_name);
     let file = std::io::BufWriter::new(
         std::fs::File::create(&buf_path)
@@ -260,11 +268,15 @@ fn create_parquet_writer(
 
 /// create mdf4 channel field
 #[inline]
-fn mdf4_field(mdfinfo4: &MdfInfo4, cn: &Cn4) -> Field {
+fn mdf4_field(
+    mdfinfo4: &MdfInfo4,
+    cn: &Cn4,
+    data: &crate::data_holder::channel_data::ChannelData,
+) -> Field {
     let field = Field::new(
-        cn.unique_name.clone(),
-        cn.data.arrow_data_type().clone(),
-        cn.data.validity().is_some(),
+        cn.unique_name.to_string(),
+        data.arrow_data_type().clone(),
+        data.validity().is_some(),
     );
     let mut metadata = HashMap::<String, String>::new();
     if let Ok(Some(unit)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_unit)
@@ -288,11 +300,15 @@ fn mdf4_field(mdfinfo4: &MdfInfo4, cn: &Cn4) -> Field {
 
 /// create mdf3 channel field
 #[inline]
-fn mdf3_field(mdfinfo3: &MdfInfo3, cn: &Cn3) -> Field {
+fn mdf3_field(
+    mdfinfo3: &MdfInfo3,
+    cn: &Cn3,
+    data: &crate::data_holder::channel_data::ChannelData,
+) -> Field {
     let field = Field::new(
-        cn.unique_name.clone(),
-        cn.data.arrow_data_type().clone(),
-        false,
+        cn.unique_name.to_string(),
+        data.arrow_data_type().clone(),
+        data.validity().is_some(),
     );
     let mut metadata = HashMap::<String, String>::new();
     if let Some(array) = mdfinfo3.sharable.cc.get(&cn.block1.cn_cc_conversion) {
@@ -314,7 +330,7 @@ fn mdf3_field(mdfinfo3: &MdfInfo3, cn: &Cn3) -> Field {
 /// Write columns and fields in parquet file
 #[inline]
 fn write_data(
-    master_channel_name: Option<String>,
+    group_suffix: &str,
     rec_id: u64,
     file_name: &str,
     compression: Compression,
@@ -323,18 +339,10 @@ fn write_data(
 ) -> Result<(), Error> {
     let record_batch = RecordBatch::try_new(Arc::clone(&fields), columns)
         .context("Failed creating recordbatch")?;
-    let mut writer = create_parquet_writer(
-        file_name,
-        compression,
-        fields,
-        master_channel_name.clone(),
-        rec_id,
-    )
-    .context("failed creating parquet writer")?;
+    let mut writer = create_parquet_writer(file_name, compression, fields, group_suffix)
+        .context("failed creating parquet writer")?;
     writer.write(&record_batch).with_context(|| {
-        format!(
-            "Failed writing recordbatch for record id {rec_id}, master channel {master_channel_name:?}"
-        )
+        format!("Failed writing recordbatch for record id {rec_id}, group {group_suffix}")
     })?;
     writer.close().context("Failed to write footer")?;
     Ok(())

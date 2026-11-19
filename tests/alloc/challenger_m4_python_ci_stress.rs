@@ -153,10 +153,11 @@ fn test_feature33_zero_allocation_10000_channel_lookups() {
 
     // 1. Setup 10,000 synthetic channels in MdfInfo4
     let mut info4 = MdfInfo4::default();
+    let master_arc: std::sync::Arc<str> = std::sync::Arc::from("MasterTime");
     for i in 0..n_channels {
         info4.channel_names_set.insert(
-            format!("Channel_Signal_{:05}", i),
-            (Some("MasterTime".to_string()), 0, (0, 0), (0, i as i64)),
+            std::sync::Arc::from(format!("Channel_Signal_{:05}", i)),
+            (Some(master_arc.clone()), 0, (0, 0), (0, i as i64)),
         );
     }
 
@@ -214,12 +215,12 @@ fn test_feature33_zero_allocation_10000_channel_lookups() {
         hd_comment: String::new(),
         dg: std::collections::BTreeMap::new(),
         sharable: mdfr::mdfinfo::mdfinfo3::SharableBlocks3::default(),
-        channel_names_set: std::collections::HashMap::new(),
+        channel_names_set: Default::default(),
     };
     for i in 0..n_channels {
         info3.channel_names_set.insert(
-            format!("Channel_Signal_{:05}", i),
-            (Some("MasterTime".to_string()), 0, (0, 0), i as u32),
+            std::sync::Arc::from(format!("Channel_Signal_{:05}", i)),
+            (Some(master_arc.clone()), 0, (0, 0), i as u32),
         );
     }
 

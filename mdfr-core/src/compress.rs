@@ -125,7 +125,7 @@ pub fn decompress_dz_data(
     org_data_length: u64,
 ) -> Result<Vec<u8>> {
     let mut data = match zip_type {
-        0 | 1 => decompress_deflate(buf)?,
+        0 | 1 => decompress_deflate(buf, org_data_length as usize)?,
         2 | 3 => decompress_zstd(buf)?,
         4 | 5 => decompress_lz4_frame(buf, org_data_length as usize)?,
         254 => {
@@ -147,7 +147,43 @@ pub fn decompress_dz_data(
 }
 
 #[cfg(feature = "deflate")]
-fn decompress_deflate(input: &[u8]) -> Result<Vec<u8>> {
+fn decompress_deflate_with_flags(
+    input: &[u8],
+    org_data_length: usize,
+    flags: u32,
+) -> Option<Vec<u8>> {
+    use miniz_oxide::inflate::TINFLStatus;
+    use miniz_oxide::inflate::core::{DecompressorOxide, decompress};
+
+    let mut out = vec![0u8; org_data_length];
+    let mut decomp = alloc::boxed::Box::new(DecompressorOxide::new());
+    let (status, _in_bytes, out_bytes) = decompress(&mut decomp, input, &mut out, 0, flags);
+    if status == TINFLStatus::Done {
+        out.truncate(out_bytes);
+        Some(out)
+    } else {
+        None
+    }
+}
+
+#[cfg(feature = "deflate")]
+fn decompress_deflate(input: &[u8], org_data_length: usize) -> Result<Vec<u8>> {
+    if org_data_length > 0 {
+        use miniz_oxide::inflate::core::inflate_flags::{
+            TINFL_FLAG_PARSE_ZLIB_HEADER, TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF,
+        };
+        let zlib_flags = TINFL_FLAG_PARSE_ZLIB_HEADER | TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF;
+        if let Some(out) = decompress_deflate_with_flags(input, org_data_length, zlib_flags) {
+            return Ok(out);
+        }
+        if let Some(out) = decompress_deflate_with_flags(
+            input,
+            org_data_length,
+            TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF,
+        ) {
+            return Ok(out);
+        }
+    }
     miniz_oxide::inflate::decompress_to_vec_zlib(input)
         .or_else(|_| miniz_oxide::inflate::decompress_to_vec(input))
         .or_else(|err| {
@@ -165,7 +201,7 @@ fn decompress_deflate(input: &[u8]) -> Result<Vec<u8>> {
 }
 
 #[cfg(not(feature = "deflate"))]
-fn decompress_deflate(_input: &[u8]) -> Result<Vec<u8>> {
+fn decompress_deflate(_input: &[u8], _org_data_length: usize) -> Result<Vec<u8>> {
     Err(Error::Unsupported("deflate feature not enabled"))
 }
 
@@ -183,6 +219,8 @@ pub fn decompress_lz4_frame(input: &[u8], expected_uncompressed_len: usize) -> R
         )));
     }
     let flg = input[4];
+    let bd = input[5];
+    let is_independent = (flg & (1 << 5)) != 0;
     let has_content_size = (flg & (1 << 3)) != 0;
     let has_dict_id = (flg & 1) != 0;
     let has_block_checksum = (flg & (1 << 4)) != 0;
@@ -199,8 +237,23 @@ pub fn decompress_lz4_frame(input: &[u8], expected_uncompressed_len: usize) -> R
         )));
     }
 
-    let initial_cap = if expected_uncompressed_len > 0 {
-        expected_uncompressed_len.min(4 * 1024 * 1024)
+    let max_block_size = match (bd >> 4) & 0x07 {
+        4 => 64 * 1024,
+        5 => 256 * 1024,
+        6 => 1024 * 1024,
+        _ => 4 * 1024 * 1024,
+    };
+
+    let content_size = if expected_uncompressed_len > 0 {
+        expected_uncompressed_len
+    } else if has_content_size && input.len() >= 15 {
+        usize::try_from(u64::from_le_bytes(input[7..15].try_into().unwrap())).unwrap_or(0)
+    } else {
+        0
+    };
+
+    let initial_cap = if content_size > 0 {
+        content_size.min(16 * 1024 * 1024)
     } else {
         0
     };
@@ -224,18 +277,27 @@ pub fn decompress_lz4_frame(input: &[u8], expected_uncompressed_len: usize) -> R
         if uncompressed {
             out.extend_from_slice(block_data);
         } else {
-            let decomp_bound = if expected_uncompressed_len > 0 {
-                expected_uncompressed_len
+            let decomp_bound = if content_size > 0 {
+                content_size
                     .saturating_sub(out.len())
-                    .min(4 * 1024 * 1024)
+                    .min(max_block_size)
+                    .max(1)
             } else {
-                4 * 1024 * 1024
+                max_block_size
             };
-            let decomp =
-                lz4_flex::block::decompress(block_data, decomp_bound.max(1)).map_err(|_| {
-                    Error::InvalidBlock(alloc::string::String::from("lz4 block decompress failed"))
-                })?;
-            out.extend_from_slice(&decomp);
+            let start = out.len();
+            out.resize(start + decomp_bound, 0);
+            let res = if !is_independent && start > 0 {
+                let (prev, curr) = out.split_at_mut(start);
+                let dict_start = start.saturating_sub(64 * 1024);
+                lz4_flex::block::decompress_into_with_dict(block_data, curr, &prev[dict_start..])
+            } else {
+                lz4_flex::block::decompress_into(block_data, &mut out[start..])
+            };
+            let written = res.map_err(|_| {
+                Error::InvalidBlock(alloc::string::String::from("lz4 block decompress failed"))
+            })?;
+            out.truncate(start + written);
         }
         if has_block_checksum {
             if pos + 4 > input.len() {

@@ -234,3 +234,71 @@ fn from_bytes_empty_or_truncated_returns_error() {
     assert!(Mdf::from_bytes(&[]).is_err());
     assert!(Mdf::from_bytes(&[0u8; 32]).is_err());
 }
+
+#[test]
+fn load_channels_data_twice_preserves_lazy_state() -> Result<()> {
+    use mdfr::logger::{ConversionDef, DataLayout, Logger, LoggerBuilder};
+    use mdfr_core::blocks::cn::CnDataType;
+    use mdfr_core::time::ManualClock;
+
+    let tmp_dir = tempfile::tempdir()?;
+    let path = tmp_dir.path().join("lazy.mf4");
+    let mut b = LoggerBuilder::new(DataLayout::Sorted, CompressionAlgorithm::NoCompression);
+    let g = b.add_group("Grp");
+    let ch = b.add_channel(g, "Val", CnDataType::UIntLE, 16)?;
+    b.set_channel_conversion(ch, ConversionDef::Linear { p1: 1.0, p2: 10.0 })?;
+    let schema = b.build()?;
+    let mut logger = Logger::start(schema, fs::File::create(&path)?, ManualClock::new(1e-3, 0))?;
+    logger.begin_record(g)?.set_u64(ch, 3)?.commit()?;
+    logger.close()?;
+
+    let mut mdf = Mdf::new(path.to_str().unwrap())?;
+    mdf.load_all_channels_data_in_memory()?;
+    mdf.load_all_channels_data_in_memory()?;
+    let mdfr::mdfinfo::MdfInfo::V4(ref info4) = mdf.mdf_info else {
+        panic!("expected V4");
+    };
+    let cn = info4.get_cn_block("Val").unwrap();
+    assert!(
+        !cn.is_converted,
+        "repeated load_all_channels_data_in_memory must not eagerly convert channels"
+    );
+    assert!(matches!(
+        mdf.get_channel_data("Val"),
+        Some(ChannelData::Float64(_))
+    ));
+    Ok(())
+}
+
+#[test]
+fn mdf3_rename_master_channel_preserves_member_channels() -> Result<()> {
+    let path = "test_files/test_mdf3.mdf";
+    if !Path::new(path).exists() {
+        return Ok(());
+    }
+    let mut mdf = Mdf::new(path)?;
+    mdf.load_all_channels_data_in_memory()?;
+    let masters = mdf.get_master_channel_names_set();
+    let Some((Some(master), members)) = masters
+        .into_iter()
+        .find(|(m, s)| m.is_some() && s.len() > 1)
+    else {
+        return Ok(());
+    };
+    let member = members.into_iter().find(|n| n != &master).unwrap();
+    let orig_member_data = mdf.get_channel_data(&member).unwrap().clone();
+    let orig_master_data = mdf.get_channel_data(&master).unwrap().clone();
+
+    let new_master = format!("{master}_renamed");
+    mdf.rename_channel(&master, &new_master);
+    assert_eq!(
+        mdf.get_channel_master(&member).as_deref(),
+        Some(new_master.as_str())
+    );
+    assert_eq!(mdf.get_channel_data(&member).unwrap(), &orig_member_data);
+    assert_eq!(
+        mdf.get_channel_data(&new_master).unwrap(),
+        &orig_master_data
+    );
+    Ok(())
+}

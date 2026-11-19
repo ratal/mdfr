@@ -1,6 +1,6 @@
 [package]
 name = "mdfr-core"
-version = "0.8.5"
+version = "0.8.6"
 description = "no_std core of mdfr: MDF 4.3 block model, codecs and embedded logger"
 authors = ["ratal <ratal@ratal.org>"]
 edition = "2024"
@@ -11,7 +11,7 @@ publish = false
 
 [features]
 default = ["deflate", "lz4", "derive"]
-std = ["binrw/std", "thiserror/std", "log/std", "chrono/std"]
+std = ["binrw/std", "thiserror/std", "chrono/std"]
 deflate = ["dep:miniz_oxide"]
 lz4 = ["dep:lz4_flex"]
 zstd = ["std", "dep:zstd"]
@@ -25,7 +25,6 @@ embedded-io-async = ["dep:embedded-io-async"]
 [dependencies]
 binrw = { version = "0.15.2", default-features = false }
 thiserror = { version = "2", default-features = false }
-log = { version = "0.4", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["alloc"] }
 transpose = "0.2.3"
 miniz_oxide = { version = "0.9.1", default-features = false, features = [
@@ -37,7 +36,7 @@ lz4_flex = { version = "0.14.0", default-features = false, features = [
     "safe-decode",
 ], optional = true }
 zstd = { version = "0.14.3", optional = true }
-mdfr-derive = { path = "../mdfr-derive", version = "0.8.5", optional = true }
+mdfr-derive = { path = "../mdfr-derive", version = "0.8.6", optional = true }
 defmt = { version = "=1.2.0", features = ["alloc"], optional = true }
 embedded-io = { version = "0.7.1", default-features = false, optional = true }
 embedded-io-async = { version = "0.7.0", default-features = false, optional = true }

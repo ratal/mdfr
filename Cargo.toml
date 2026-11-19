@@ -1,6 +1,6 @@
 [package]
 name = "mdfr"
-version = "0.8.5"
+version = "0.8.6"
 description = "A package for reading and writing MDF files"
 authors = ["ratal <ratal@ratal.org>"]
 edition = "2024"
@@ -23,7 +23,7 @@ ndarray = ["dep:ndarray"]
 
 [dependencies]
 memmap2 = "0.9.12" # for safe zero-copy memory-mapped file reading
-mdfr-core = { path = "mdfr-core", version = "0.8.5", features = ["std", "capi", "zstd", "derive"] }
+mdfr-core = { path = "mdfr-core", version = "0.8.6", features = ["std", "capi", "zstd", "derive"] }
 clap = { version = "4.6.8", optional = true } # for input arguments (cli feature)
 anyhow = { version = "1.0.104", features = ["backtrace"] } # error handling
 log = "0.4.35" # to log events
@@ -40,11 +40,7 @@ crossbeam-channel = "0.5.17" # for efficient channel between threads
 parking_lot = "0.13" # for efficient mutex
 rustc-hash = "2.1" # for faster HashMap in hot paths with integer keys
 roxmltree = "0.21.2" # for xml parsing
-flate2 = { version = "1.1.11", features = ["zlib-rs"] } # for DZ block data deflate
-zstd = "0.14.4"
-lz4 = "1.28.1"
 md-5 = "0.11.0" # md5sum of attachments
-transpose = "0.2.3" # for DZBlock transpose
 fasteval = "0.2.4" # for algebraic conversion
 itertools = "0.15.0"
 whoami = "2.1.3" # to get user name for writing file
@@ -77,10 +73,8 @@ criterion = "0.8.2" # for benchmark
 test-log = "0.2.21"
 glob = "0.3.4"
 tempfile = "3.27.0"
+flate2 = { version = "1.1.11", features = ["zlib-rs"] }
 pyo3 = { version = "0.29.2", features = ["auto-initialize"] }
-
-[build-dependencies]
-cbindgen = "0.29.4" # to generate C api headers
 
 [lib]
 name = "mdfr"

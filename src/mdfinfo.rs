@@ -58,17 +58,21 @@ impl MdfInfo {
     pub fn new(file_name: &str) -> Result<MdfInfo, Error> {
         let mapped = MappedFile::open(file_name)
             .with_context(|| format!("Cannot find the file {file_name}"))?;
+        mapped.advise_random();
         info!("Opened file {file_name}");
-        Self::from_bytes_with_name(&mapped, file_name)
+        let rdr = SliceCursor::from_mapped(&mapped);
+        let res = Self::from_cursor_with_name(rdr, file_name);
+        mapped.advise_dontneed_range(0, mapped.len());
+        res
     }
 
     /// parses MdfInfo directly from an in-memory byte slice
     pub fn from_bytes(bytes: &[u8]) -> Result<MdfInfo, Error> {
-        Self::from_bytes_with_name(bytes, "")
+        let rdr = SliceCursor::new(bytes);
+        Self::from_cursor_with_name(rdr, "")
     }
 
-    fn from_bytes_with_name(bytes: &[u8], file_name: &str) -> Result<MdfInfo, Error> {
-        let mut rdr = SliceCursor::new(bytes);
+    fn from_cursor_with_name(mut rdr: SliceCursor<'_>, file_name: &str) -> Result<MdfInfo, Error> {
         // Read beginning of ID Block
         let slice = rdr
             .read_slice(64)
@@ -508,9 +512,9 @@ impl MdfInfo {
                 .iter()
                 .map(|(name, (master, dg, (cg, rec_id), cn))| {
                     (
-                        name.clone(),
+                        name.to_string(),
                         (
-                            master.clone(),
+                            master.as_deref().map(str::to_string),
                             *dg as i64,
                             *cg as i64,
                             *rec_id as u64,
@@ -525,8 +529,15 @@ impl MdfInfo {
                 .iter()
                 .map(|(name, (master, dg, (cg, rec_id), (cn, rec_pos)))| {
                     (
-                        name.clone(),
-                        (master.clone(), *dg, *cg, *rec_id, *cn, *rec_pos),
+                        name.to_string(),
+                        (
+                            master.as_deref().map(str::to_string),
+                            *dg,
+                            *cg,
+                            *rec_id,
+                            *cn,
+                            *rec_pos,
+                        ),
                     )
                 })
                 .collect(),
@@ -602,17 +613,10 @@ impl MdfInfo {
         channel_master_list
     }
     /// returns an iterator over all channel names (zero-copy)
-    pub fn channel_names(&self) -> Box<dyn Iterator<Item = &String> + '_> {
+    pub fn channel_names(&self) -> Box<dyn Iterator<Item = &str> + '_> {
         match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.channel_names(),
             MdfInfo::V4(mdfinfo4) => mdfinfo4.channel_names(),
-        }
-    }
-    /// returns a reference to the channel names in the same channel group (zero-copy)
-    pub fn channel_names_cg_set_ref(&self, channel_name: &str) -> Option<&HashSet<String>> {
-        match self {
-            MdfInfo::V3(mdfinfo3) => mdfinfo3.channel_names_cg_set_ref(channel_name),
-            MdfInfo::V4(mdfinfo4) => mdfinfo4.channel_names_cg_set_ref(channel_name),
         }
     }
     /// Clears all data arrays
@@ -674,6 +678,13 @@ impl MdfInfo {
         match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.convert_channel(channel_name),
             MdfInfo::V4(mdfinfo4) => mdfinfo4.convert_channel(channel_name),
+        }
+    }
+    /// Returns `true` if the channel has data loaded in memory without triggering conversion.
+    pub fn has_channel_data(&self, channel_name: &str) -> bool {
+        match self {
+            MdfInfo::V3(m) => m.has_channel_data(channel_name),
+            MdfInfo::V4(m) => m.has_channel_data(channel_name),
         }
     }
     /// returns channel's data ndarray. If data were not yet converted, keeps converted data into memory

@@ -34,7 +34,7 @@ pub struct TensorArrow<T: ArrowPrimitiveType> {
 #[derive(Debug)]
 pub struct TensorBuilder<T: ArrowPrimitiveType> {
     pub(crate) null_buffer_builder: Option<BooleanBuffer>,
-    pub(crate) values_builder: PrimitiveBuilder<T>,
+    pub(crate) values: Vec<T::Native>,
     pub(crate) shape: Vec<usize>,
     pub(crate) order: Order,
 }
@@ -203,37 +203,54 @@ impl<T: ArrowPrimitiveType> TensorBuilder<T> {
         let elem_count = shape.iter().product::<usize>().max(1);
         Self {
             null_buffer_builder: None,
-            values_builder: PrimitiveBuilder::with_capacity(capacity * elem_count),
+            values: Vec::with_capacity(capacity * elem_count),
+            shape,
+            order,
+        }
+    }
+
+    /// Create new zeroed tensor builder with `len` elements (zero-copy finish)
+    pub fn new_zeroed(len: usize, shape: Vec<usize>, order: Order) -> Self
+    where
+        T::Native: Default + Clone,
+    {
+        Self {
+            null_buffer_builder: None,
+            values: vec![T::Native::default(); len],
             shape,
             order,
         }
     }
 
     /// Create new tensor builder from a MutableBuffer
+    #[allow(dead_code)]
     pub fn new_from_buffer(values_buffer: MutableBuffer, shape: Vec<usize>, order: Order) -> Self {
-        let values_builder = PrimitiveBuilder::new_from_buffer(values_buffer, None);
+        let num_elements = values_buffer.len() / size_of::<T::Native>();
+        let buffer: arrow::buffer::Buffer = values_buffer.into();
+        let scalar_buffer = ScalarBuffer::<T::Native>::new(buffer, 0, num_elements);
+        let values: Vec<T::Native> = scalar_buffer.into();
         Self {
             null_buffer_builder: None,
-            values_builder,
+            values,
             shape,
             order,
         }
     }
 
-    /// returns inner primitive builder as a mutable slice
+    /// returns inner buffer as a mutable slice
     pub fn values_slice_mut(&mut self) -> &mut [T::Native] {
-        self.values_builder.values_slice_mut()
+        &mut self.values
     }
 
-    /// returns inner primitive builder as a slice
+    /// returns inner buffer as a slice
     #[allow(dead_code)]
     pub fn values_slice(&self) -> &[T::Native] {
-        self.values_builder.values_slice()
+        &self.values
     }
 
     /// finishes building and converts to an immutable TensorArrow (0 copies)
-    pub fn finish(mut self) -> TensorArrow<T> {
-        let values = self.values_builder.finish();
+    pub fn finish(self) -> TensorArrow<T> {
+        let values = PrimitiveArray::new(ScalarBuffer::from(self.values), None);
         let prod = self.shape.iter().product::<usize>();
         let len = values.len().checked_div(prod).unwrap_or(0);
         TensorArrow {

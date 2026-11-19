@@ -6,11 +6,13 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::{DateTime, FixedOffset, NaiveDate, TimeZone};
 use encoding_rs::Encoding;
 use log::info;
+use rustc_hash::FxHashMap;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::default::Default;
 use std::fmt;
 use std::io::{Cursor, prelude::*};
+use std::sync::Arc;
 
 use crate::data_holder::channel_data::{ChannelData, data_type_init};
 use crate::data_holder::tensor_arrow::Order;
@@ -42,8 +44,8 @@ pub struct MdfInfo3 {
     pub channel_names_set: ChannelNamesSet3,
 }
 
-pub(crate) type ChannelId3 = (Option<String>, u32, (u32, u16), u32);
-pub(crate) type ChannelNamesSet3 = HashMap<String, ChannelId3>;
+pub(crate) type ChannelId3 = (Option<Arc<str>>, u32, (u32, u16), u32);
+pub(crate) type ChannelNamesSet3 = FxHashMap<Arc<str>, ChannelId3>;
 
 /// MdfInfo3's implementation
 #[allow(dead_code)]
@@ -106,12 +108,17 @@ impl MdfInfo3 {
         }
         desc
     }
-    /// returns the master channel associated to the input channel name
+    /// Returns an immutable reference to `Cn3` by channel name if present.
+    pub(crate) fn get_cn_by_name(&self, channel_name: &str) -> Option<&Cn3> {
+        let (_master, dg_pos, (_cg_pos, rec_id), cn_pos) = self.get_channel_id(channel_name)?;
+        self.dg.get(dg_pos)?.cg.get(rec_id)?.cn.get(cn_pos)
+    }
+    /// Returns the master channel associated to the input channel name
     pub fn get_channel_master(&self, channel_name: &str) -> Option<String> {
         let mut master = None;
         if let Some((m, _dg_pos, (_cg_pos, _rec_idd), _cn_pos)) = self.get_channel_id(channel_name)
         {
-            master.clone_from(m);
+            master = m.as_deref().map(str::to_string);
         }
         master
     }
@@ -178,50 +185,38 @@ impl MdfInfo3 {
     }
     /// returns the set of channel names
     pub fn get_channel_names_set(&self) -> HashSet<String> {
-        self.channel_names_set.keys().cloned().collect()
+        self.channel_names_set
+            .keys()
+            .map(|s| s.to_string())
+            .collect()
     }
     /// returns an iterator over all channel names (zero-copy)
-    pub fn channel_names(&self) -> Box<dyn Iterator<Item = &String> + '_> {
-        Box::new(self.channel_names_set.keys())
+    pub fn channel_names(&self) -> Box<dyn Iterator<Item = &str> + '_> {
+        Box::new(self.channel_names_set.keys().map(|s| s.as_ref()))
     }
     /// returns the set of channel names that are in same channel group as input channel name
     pub fn get_channel_names_cg_set(&self, channel_name: &str) -> HashSet<String> {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), _cn_pos)) =
             self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
         {
-            let mut channel_list = HashSet::new();
-            if let Some(dg) = self.dg.get(dg_pos)
-                && let Some(cg) = dg.cg.get(rec_id)
-            {
-                channel_list.clone_from(&cg.channel_names);
-            }
-            channel_list
-        } else {
-            HashSet::new()
+            return cg
+                .cn
+                .values()
+                .map(|cn| cn.unique_name.to_string())
+                .collect();
         }
-    }
-    /// returns a reference to the channel names in the same channel group (zero-copy)
-    pub fn channel_names_cg_set_ref(&self, channel_name: &str) -> Option<&HashSet<String>> {
-        if let Some((_master, dg_pos, (_cg_pos, rec_id), _cn_pos)) =
-            self.get_channel_id(channel_name)
-        {
-            self.dg
-                .get(dg_pos)?
-                .cg
-                .get(rec_id)
-                .map(|cg| &cg.channel_names)
-        } else {
-            None
-        }
+        HashSet::new()
     }
     /// returns a hashmap for which master channel names are keys and values its corresponding set of channel names
     pub fn get_master_channel_names_set(&self) -> HashMap<Option<String>, HashSet<String>> {
         let mut map: HashMap<Option<String>, HashSet<String>> = HashMap::new();
         for dg in self.dg.values() {
             for cg in dg.cg.values() {
-                map.entry(cg.master_channel_name.clone())
+                map.entry(cg.master_channel_name.as_deref().map(str::to_string))
                     .or_default()
-                    .extend(cg.channel_names.iter().cloned());
+                    .extend(cg.cn.values().map(|cn| cn.unique_name.to_string()));
             }
         }
         map
@@ -233,7 +228,7 @@ impl MdfInfo3 {
     ) -> Result<(), Error> {
         for channel_name in channel_names {
             if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
-                self.channel_names_set.get_mut(&channel_name)
+                self.channel_names_set.get_mut(channel_name.as_str())
                 && let Some(dg) = self.dg.get_mut(dg_pos)
                 && let Some(cg) = dg.cg.get_mut(rec_id)
                 && let Some(cn) = cg.cn.get_mut(cn_pos)
@@ -256,6 +251,9 @@ impl MdfInfo3 {
             && let Some(cg) = dg.cg.get_mut(rec_id)
             && let Some(cn) = cg.cn.get_mut(cn_pos)
         {
+            cg.block.cg_cycle_count = data.len() as u32;
+            cn.is_converted = true;
+            cn.block1.cn_cc_conversion = 0;
             cn.data = data;
         }
         Ok(())
@@ -269,13 +267,14 @@ impl MdfInfo3 {
     ) -> Result<(), Error> {
         for channel_name in channel_names {
             if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
-                self.channel_names_set.get(channel_name)
+                self.channel_names_set.get(channel_name.as_str())
                 && let Some(dg) = self.dg.get_mut(dg_pos)
                 && let Some(cg) = dg.cg.get_mut(rec_id)
                 && let Some(cn) = cg.cn.get_mut(cn_pos)
                 && !cn.data.is_empty()
             {
                 cn.data = cn.data.slice_range(start_idx, end_idx)?;
+                cg.block.cg_cycle_count = cn.data.len() as u32;
             }
         }
         Ok(())
@@ -288,7 +287,6 @@ impl MdfInfo3 {
             && let Some(cg) = dg.cg.get_mut(rec_id)
         {
             cg.cn.remove(cn_pos);
-            cg.channel_names.remove(channel_name);
             self.channel_names_set.remove(channel_name);
         }
     }
@@ -304,6 +302,14 @@ impl MdfInfo3 {
             state = cn.channel_data_valid
         }
         state
+    }
+    /// Returns `true` if the channel has data loaded in memory without triggering conversion.
+    pub fn has_channel_data(&self, channel_name: &str) -> bool {
+        self.get_channel_id(channel_name)
+            .and_then(|(_, dg_pos, (_, rec_id), cn_pos)| {
+                self.dg.get(dg_pos)?.cg.get(rec_id)?.cn.get(cn_pos)
+            })
+            .is_some_and(|cn| !cn.data.is_empty())
     }
     /// Returns the channel's data ndarray if present in memory, otherwise None.
     /// If data were not converted yet, it will convert it and keep in memory for further use
@@ -366,27 +372,25 @@ impl MdfInfo3 {
             && let Some(cg) = dg.cg.get_mut(&rec_id)
             && let Some(cn) = cg.cn.get_mut(&cn_pos)
         {
-            cn.unique_name = new_name.to_string();
-            cg.channel_names.remove(channel_name);
-            cg.channel_names.insert(new_name.to_string());
-            if let Some(master_name) = &master
-                && master_name == channel_name
-            {
-                cg.master_channel_name = Some(new_name.to_string());
-                cg.channel_names.iter().for_each(|channel| {
-                    if let Some(val) = self.channel_names_set.get_mut(channel) {
-                        val.0 = Some(new_name.to_string());
-                        val.1 = dg_pos;
-                        val.2 = (cg_pos, rec_id);
-                        val.3 = cn_pos;
+            let new_arc: Arc<str> = Arc::from(new_name);
+            cn.unique_name = Arc::clone(&new_arc);
+            let is_master = master.as_deref() == Some(channel_name);
+            if is_master {
+                cg.master_channel_name = Some(Arc::clone(&new_arc));
+                for ch in cg.cn.values() {
+                    if let Some(val) = self.channel_names_set.get_mut(&ch.unique_name) {
+                        val.0 = Some(Arc::clone(&new_arc));
                     }
-                });
+                }
             }
 
-            self.channel_names_set.insert(
-                new_name.to_string(),
-                (master, dg_pos, (cg_pos, rec_id), cn_pos),
-            );
+            let updated_master = if is_master {
+                Some(new_arc.clone())
+            } else {
+                master
+            };
+            self.channel_names_set
+                .insert(new_arc, (updated_master, dg_pos, (cg_pos, rec_id), cn_pos));
         }
     }
     /// Sets the channel unit in memory
@@ -981,7 +985,6 @@ fn parse_cg3_block(
         cn,
         block_position,
         master_channel_name: None,
-        channel_names: HashSet::new(),
         record_length,
     };
 
@@ -996,8 +999,7 @@ pub struct Cg3 {
     pub block: Cg3Block,
     pub cn: HashMap<u32, Cn3>, // hashmap of channels
     pub block_position: u32,
-    pub master_channel_name: Option<String>,
-    pub channel_names: HashSet<String>,
+    pub master_channel_name: Option<Arc<str>>,
     pub record_length: u16, // record length including recordId
 }
 
@@ -1062,7 +1064,7 @@ pub struct Cn3 {
     pub block1: Cn3Block1,
     pub block2: Cn3Block2,
     /// unique channel name string
-    pub unique_name: String,
+    pub unique_name: Arc<str>,
     /// channel comment
     pub comment: String,
     // channel description
@@ -1082,7 +1084,7 @@ pub struct Cn3 {
     /// flag set during data read to indicate this channel is in the read set
     pub should_read: bool,
     /// Optional mutable staging builder used while decoding data blocks
-    pub builder: Option<crate::data_holder::channel_builder::ChannelBuilder>,
+    pub builder: Option<Box<crate::data_holder::channel_builder::ChannelBuilder>>,
 }
 
 impl Clone for Cn3 {
@@ -1109,7 +1111,7 @@ impl Cn3 {
     /// Initializes builder for mutable record accumulation during file reading
     pub fn init_builder(&mut self, cycle_count: usize) -> Result<(), Error> {
         let data_type = convert_data_type_3to4(self.block2.cn_data_type);
-        self.builder = Some(
+        self.builder = Some(Box::new(
             crate::data_holder::channel_builder::ChannelBuilder::new_zeroed(
                 0,
                 data_type,
@@ -1121,7 +1123,7 @@ impl Cn3 {
                 ),
                 1,
             )?,
-        );
+        ));
         Ok(())
     }
     /// Returns the minimum signal value if the value range valid flag (bit 3) is set.
@@ -1377,7 +1379,7 @@ fn parse_cn3_block(
         block2,
         description,
         comment,
-        unique_name,
+        unique_name: Arc::from(unique_name),
         pos_byte_beg,
         n_bytes,
         data: data_type_init(0, data_type, n_bytes as u32, 1, 0)?,
@@ -1429,7 +1431,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
     let date_ms = Cn3 {
         block1: block1.clone(),
         block2,
-        unique_name: String::from("ms"),
+        unique_name: Arc::from("ms"),
         comment: String::new(),
         description: String::from("Milliseconds"),
         pos_byte_beg,
@@ -1451,7 +1453,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
     let min = Cn3 {
         block1: block1.clone(),
         block2,
-        unique_name: String::from("min"),
+        unique_name: Arc::from("min"),
         comment: String::new(),
         description: String::from("Minutes"),
         pos_byte_beg: pos_byte_beg + 2,
@@ -1473,7 +1475,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
     let hour = Cn3 {
         block1: block1.clone(),
         block2,
-        unique_name: String::from("hour"),
+        unique_name: Arc::from("hour"),
         comment: String::new(),
         description: String::from("Hours"),
         pos_byte_beg: pos_byte_beg + 3,
@@ -1495,7 +1497,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
     let day = Cn3 {
         block1: block1.clone(),
         block2,
-        unique_name: String::from("day"),
+        unique_name: Arc::from("day"),
         comment: String::new(),
         description: String::from("Days"),
         pos_byte_beg: pos_byte_beg + 4,
@@ -1517,7 +1519,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
     let month = Cn3 {
         block1: block1.clone(),
         block2,
-        unique_name: String::from("month"),
+        unique_name: Arc::from("month"),
         comment: String::new(),
         description: String::from("Month"),
         pos_byte_beg: pos_byte_beg + 5,
@@ -1539,7 +1541,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
     let year = Cn3 {
         block1,
         block2,
-        unique_name: String::from("year"),
+        unique_name: Arc::from("year"),
         comment: String::new(),
         description: String::from("Years"),
         pos_byte_beg: pos_byte_beg + 6,
@@ -1571,7 +1573,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
     let ms: Cn3 = Cn3 {
         block1: block1.clone(),
         block2,
-        unique_name: String::from("ms"),
+        unique_name: Arc::from("ms"),
         comment: String::new(),
         description: String::from("Milliseconds"),
         pos_byte_beg,
@@ -1593,7 +1595,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
     let days: Cn3 = Cn3 {
         block1,
         block2,
-        unique_name: String::from("day"),
+        unique_name: Arc::from("day"),
         comment: String::new(),
         description: String::from("Days"),
         pos_byte_beg: pos_byte_beg + 4,
@@ -1968,8 +1970,10 @@ pub fn build_channel_db3(
     n_cg: u16,
     n_cn: u16,
 ) -> ChannelNamesSet3 {
-    let mut channel_list: ChannelNamesSet3 = HashMap::with_capacity(n_cn as usize);
-    let mut master_channel_list: HashMap<u32, String> = HashMap::with_capacity(n_cg as usize);
+    let mut channel_list: ChannelNamesSet3 =
+        FxHashMap::with_capacity_and_hasher(n_cn as usize, Default::default());
+    let mut master_channel_list: FxHashMap<u32, Arc<str>> =
+        FxHashMap::with_capacity_and_hasher(n_cg as usize, Default::default());
     // creating channel list for whole file and making channel names unique
     for (dg_position, dg) in dg.iter_mut() {
         for (record_id, cg) in &mut dg.cg {
@@ -1977,31 +1981,33 @@ pub fn build_channel_db3(
                 if channel_list.contains_key(&cn.unique_name) {
                     let mut changed: bool = false;
                     let space_char = " ";
+                    let mut buf = cn.unique_name.to_string();
                     // create unique channel name
                     if let Some(ce) = sharable.ce.get(&cn.block1.cn_ce_source) {
                         match &ce.ce_extension {
                             CeSupplement::Dim(dim) => {
-                                cn.unique_name.push_str(space_char);
-                                cn.unique_name.push_str(&dim.ce_ecu_id);
+                                buf.push_str(space_char);
+                                buf.push_str(&dim.ce_ecu_id);
                                 changed = true;
                             }
                             CeSupplement::Can(can) => {
-                                cn.unique_name.push_str(space_char);
-                                cn.unique_name.push_str(&can.ce_message_name);
+                                buf.push_str(space_char);
+                                buf.push_str(&can.ce_message_name);
                                 changed = true;
                             }
                             _ => {}
                         }
                     }
                     // No souce name to make channel unique
-                    if !changed || channel_list.contains_key(&cn.unique_name) {
+                    if !changed || channel_list.contains_key(buf.as_str()) {
                         // extend name with channel block position, unique
-                        cn.unique_name.push_str(space_char);
-                        cn.unique_name.push_str(&cn_position.to_string());
+                        use std::fmt::Write as _;
+                        let _ = write!(buf, "{space_char}{cn_position}");
                     }
-                };
+                    cn.unique_name = Arc::from(buf);
+                }
                 channel_list.insert(
-                    cn.unique_name.clone(),
+                    Arc::clone(&cn.unique_name),
                     (
                         None, // computes at second step master channel name
                         *dg_position,
@@ -2011,7 +2017,7 @@ pub fn build_channel_db3(
                 );
                 if cn.block1.cn_type != 0 {
                     // Master channel
-                    master_channel_list.insert(cg.block_position, cn.unique_name.clone());
+                    master_channel_list.insert(cg.block_position, Arc::clone(&cn.unique_name));
                 }
             }
         }
@@ -2019,19 +2025,14 @@ pub fn build_channel_db3(
     // identifying master channels
     for dg in dg.values_mut() {
         for cg in dg.cg.values_mut() {
-            let mut cg_channel_list: HashSet<String> =
-                HashSet::with_capacity(cg.block.cg_n_channels as usize);
-            let master_channel_name: Option<String> = master_channel_list
-                .get(&cg.block_position)
-                .map(std::string::ToString::to_string);
+            let master_channel_name: Option<Arc<str>> =
+                master_channel_list.get(&cg.block_position).cloned();
             for cn in cg.cn.values_mut() {
-                cg_channel_list.insert(cn.unique_name.clone());
                 // assigns master in channel_list
                 if let Some(id) = channel_list.get_mut(&cn.unique_name) {
                     id.0.clone_from(&master_channel_name);
                 }
             }
-            cg.channel_names = cg_channel_list;
             cg.master_channel_name = master_channel_name;
         }
     }

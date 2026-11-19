@@ -366,7 +366,7 @@ fn parse_composition_inner(
             Cn4::default()
         };
         let shape = cn_struct.shape.clone();
-        let cn_composition = cn_struct.composition.clone().map(Box::new);
+        let cn_composition = cn_struct.composition.clone();
         Ok((
             Composition {
                 block: Compo::CN(Box::new(cn_struct)),

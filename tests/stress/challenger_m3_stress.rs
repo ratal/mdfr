@@ -743,7 +743,7 @@ fn test_xml_metadata_preservation_and_roundtrip() -> Result<()> {
                         info4.sharable.md_tx.insert(888002, md_unit);
                         info4.sharable.md_tx.insert(888003, md_comment);
 
-                        found_name = cn.unique_name.clone();
+                        found_name = cn.unique_name.to_string();
                         found_cn = true;
                     }
                     if found_cn {
@@ -817,7 +817,7 @@ fn test_xml_metadata_preservation_and_roundtrip() -> Result<()> {
             for dg in info4.dg.values_mut() {
                 for cg in dg.cg.values_mut() {
                     for cn in cg.cn.values_mut() {
-                        if cn.unique_name == target_channel_name {
+                        if *cn.unique_name == *target_channel_name {
                             found_target = true;
 
                             // Channel Unit

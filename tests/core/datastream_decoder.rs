@@ -203,9 +203,9 @@ fn test_decode_channel_union_two_members() {
     let cu_block = Cu4Block::default();
 
     let mut cn_a = make_cn4(0, 16, 0, 0, 0, 0);
-    cn_a.unique_name = "chan_a".to_string();
+    cn_a.unique_name = "chan_a".into();
     let mut cn_b = make_cn4(0, 16, 0, 0, 0, 0);
-    cn_b.unique_name = "chan_b".to_string();
+    cn_b.unique_name = "chan_b".into();
 
     let member_channels: Vec<&Cn4> = vec![&cn_a, &cn_b];
     let mut stream_state = StreamState::new();
@@ -225,9 +225,9 @@ fn test_decode_channel_union_different_sizes() {
     let cu_block = Cu4Block::default();
 
     let mut cn_small = make_cn4(0, 8, 0, 0, 0, 0); // 1 byte
-    cn_small.unique_name = "small".to_string();
+    cn_small.unique_name = "small".into();
     let mut cn_large = make_cn4(0, 32, 0, 0, 0, 0); // 4 bytes
-    cn_large.unique_name = "large".to_string();
+    cn_large.unique_name = "large".into();
 
     let member_channels: Vec<&Cn4> = vec![&cn_small, &cn_large];
     let mut stream_state = StreamState::new();
@@ -252,11 +252,11 @@ fn test_decode_channel_variant_match_first() {
         ..Default::default()
     };
     let mut cn_opt0 = make_cn4(0, 8, 0, 0, 0, 0);
-    cn_opt0.unique_name = "opt0".to_string();
+    cn_opt0.unique_name = "opt0".into();
     let mut cn_opt1 = make_cn4(0, 8, 0, 0, 0, 0);
-    cn_opt1.unique_name = "opt1".to_string();
+    cn_opt1.unique_name = "opt1".into();
     let mut cn_opt2 = make_cn4(0, 8, 0, 0, 0, 0);
-    cn_opt2.unique_name = "opt2".to_string();
+    cn_opt2.unique_name = "opt2".into();
 
     let option_channels: Vec<&Cn4> = vec![&cn_opt0, &cn_opt1, &cn_opt2];
     let mut stream_state = StreamState::new();
@@ -278,11 +278,11 @@ fn test_decode_channel_variant_match_last() {
         ..Default::default()
     };
     let mut cn_opt0 = make_cn4(0, 8, 0, 0, 0, 0);
-    cn_opt0.unique_name = "opt0".to_string();
+    cn_opt0.unique_name = "opt0".into();
     let mut cn_opt1 = make_cn4(0, 8, 0, 0, 0, 0);
-    cn_opt1.unique_name = "opt1".to_string();
+    cn_opt1.unique_name = "opt1".into();
     let mut cn_opt2 = make_cn4(0, 8, 0, 0, 0, 0);
-    cn_opt2.unique_name = "opt2".to_string();
+    cn_opt2.unique_name = "opt2".into();
 
     let option_channels: Vec<&Cn4> = vec![&cn_opt0, &cn_opt1, &cn_opt2];
     let mut stream_state = StreamState::new();
@@ -303,7 +303,7 @@ fn test_decode_channel_variant_no_match() {
         ..Default::default()
     };
     let mut cn_opt0 = make_cn4(0, 8, 0, 0, 0, 0);
-    cn_opt0.unique_name = "opt0".to_string();
+    cn_opt0.unique_name = "opt0".into();
     let option_channels: Vec<&Cn4> = vec![&cn_opt0];
     let mut stream_state = StreamState::new();
 
