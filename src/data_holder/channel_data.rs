@@ -7,7 +7,7 @@ use arrow::array::{
     FixedSizeBinaryArray, FixedSizeListArray, Int8Array, LargeBinaryArray, LargeStringArray,
     PrimitiveArray, StringArray, StringViewArray, UInt8Array, UnionArray, as_primitive_array,
 };
-use arrow::buffer::{Buffer, MutableBuffer, NullBuffer, ScalarBuffer};
+use arrow::buffer::{Buffer, MutableBuffer, NullBuffer, OffsetBuffer, ScalarBuffer};
 use arrow::datatypes::{
     ArrowPrimitiveType, DataType, Float16Type, Float32Type, Float64Type, Int8Type, Int16Type,
     Int32Type, Int64Type, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
@@ -1520,22 +1520,28 @@ pub fn data_type_init(
                 }
                 6..=9 => {
                     // String UTF8
-                    Ok(ChannelData::Utf8(
-                        LargeStringArray::from(Vec::<&str>::new()),
-                    ))
+                    Ok(ChannelData::Utf8(LargeStringArray::new(
+                        OffsetBuffer::new_empty(),
+                        Buffer::default(),
+                        None,
+                    )))
                 }
                 17 => {
                     // String Unicode with Byte Order Mark
-                    Ok(ChannelData::Utf8(
-                        LargeStringArray::from(Vec::<&str>::new()),
-                    ))
+                    Ok(ChannelData::Utf8(LargeStringArray::new(
+                        OffsetBuffer::new_empty(),
+                        Buffer::default(),
+                        None,
+                    )))
                 }
                 10 => {
                     // bytearray
                     if cn_type == 1 || cn_type == 7 || (cn_flags & CN_F_DATA_STREAM_MODE) != 0 {
                         // VLSD, VLSC, or Data Stream (MDF 4.3 flag bit 17)
-                        Ok(ChannelData::VariableSizeByteArray(LargeBinaryArray::from(
-                            Vec::<&[u8]>::new(),
+                        Ok(ChannelData::VariableSizeByteArray(LargeBinaryArray::new(
+                            OffsetBuffer::new_empty(),
+                            Buffer::default(),
+                            None,
                         )))
                     } else {
                         Ok(ChannelData::FixedSizeByteArray(FixedSizeBinaryArray::new(
@@ -1548,8 +1554,10 @@ pub fn data_type_init(
                 11 | 12 => {
                     // MIME sample / stream — store as byte array (MIME type is in cn_unit)
                     if cn_type == 1 || cn_type == 7 || (cn_flags & CN_F_DATA_STREAM_MODE) != 0 {
-                        Ok(ChannelData::VariableSizeByteArray(LargeBinaryArray::from(
-                            Vec::<&[u8]>::new(),
+                        Ok(ChannelData::VariableSizeByteArray(LargeBinaryArray::new(
+                            OffsetBuffer::new_empty(),
+                            Buffer::default(),
+                            None,
                         )))
                     } else {
                         Ok(ChannelData::FixedSizeByteArray(FixedSizeBinaryArray::new(
@@ -1618,8 +1626,10 @@ pub fn data_type_init(
                 // bytearray
                 if cn_type == 1 || cn_type == 7 {
                     // VLSD or VLSC
-                    Ok(ChannelData::VariableSizeByteArray(LargeBinaryArray::from(
-                        Vec::<&[u8]>::new(),
+                    Ok(ChannelData::VariableSizeByteArray(LargeBinaryArray::new(
+                        OffsetBuffer::new_empty(),
+                        Buffer::default(),
+                        None,
                     )))
                 } else {
                     Ok(ChannelData::FixedSizeByteArray(FixedSizeBinaryArray::new(

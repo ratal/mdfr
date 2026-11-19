@@ -5,7 +5,6 @@ use encoding_rs::{GB18030, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use half::f16;
 use rayon::prelude::*;
 use std::str;
-use std::sync::{Arc, Mutex};
 use unicode_bom::Bom;
 
 use crate::data_holder::channel_builder::ChannelBuilder;
@@ -1247,471 +1246,90 @@ pub fn read_channels_from_bytes_with_inval(
             data_chunk.len() % record_length
         );
     }
-    let vlsd_channels: Arc<Mutex<Vec<(u8, i64)>>> = Arc::new(Mutex::new(Vec::new()));
-    channels
+    let min_for_parallel = (32 * 1024usize).div_ceil(data_chunk.len()).max(2);
+    let readable_sample = channels
+        .values()
+        .filter(|cn| cn.should_read)
+        .take(min_for_parallel)
+        .count();
+    if readable_sample == 0 {
+        return Ok(Vec::new());
+    }
+    let use_parallel = readable_sample >= min_for_parallel;
+    if !use_parallel {
+        let mut vlsd_channels = Vec::new();
+        for (rec_pos, cn) in channels.iter_mut() {
+            if !cn.should_read {
+                continue;
+            }
+            if let Some(entry) = decode_channel_chunk(
+                *rec_pos,
+                cn,
+                data_chunk,
+                record_length,
+                previous_index,
+                record_with_invalid_data,
+                cg_inval_bytes,
+            )? {
+                vlsd_channels.push(entry);
+            }
+        }
+        return Ok(vlsd_channels);
+    }
+
+    let vlsd_channels = channels
         .par_iter_mut()
         .filter(|(_cn_record_position, cn)| cn.should_read)
-        .try_for_each(|(rec_pos, cn): (&i64, &mut Cn4)| -> Result<(), Error> {
-            if let Some(compo) = &cn.composition
-                && let Compo::CA(ca) = &compo.block
-                && (ca.ca_storage == 1 || ca.ca_storage == 2)
-            {
-                if ca.ca_storage == 1 {
-                    extract_record_invalid_bits(
-                        cn,
-                        data_chunk,
-                        record_length,
-                        previous_index,
-                        record_with_invalid_data,
-                        cg_inval_bytes,
-                    );
+        .try_fold(
+            Vec::new,
+            |mut acc, (rec_pos, cn)| -> Result<Vec<(u8, i64)>, Error> {
+                if let Some(entry) = decode_channel_chunk(
+                    *rec_pos,
+                    cn,
+                    data_chunk,
+                    record_length,
+                    previous_index,
+                    record_with_invalid_data,
+                    cg_inval_bytes,
+                )? {
+                    acc.push(entry);
                 }
-                return Ok(());
-            }
-            let is_dynamic_compo = matches!(
-                cn.composition.as_ref().map(|c| &c.block),
-                Some(Compo::DS(_) | Compo::CL(_))
-            ) || matches!(
-                cn.composition.as_ref().map(|c| &c.block),
-                Some(Compo::CA(ca)) if ca.ca_storage == 5
-            );
-            let is_vlsc_offset_channel = cn.block.cn_type == 7
-                && matches!(
-                    cn.builder.as_deref(),
-                    Some(
-                        ChannelBuilder::UInt8(_)
-                            | ChannelBuilder::UInt16(_)
-                            | ChannelBuilder::UInt32(_)
-                            | ChannelBuilder::UInt64(_)
-                    )
-                );
-            if (cn.block.cn_flags & CN_F_DATA_STREAM_MODE) == 0
-                && !is_dynamic_compo
-                && (cn.block.cn_type == 0
-                    || cn.block.cn_type == 2
-                    || cn.block.cn_type == 4
-                    || cn.block.cn_type == 5
-                    || is_vlsc_offset_channel)
-            {
-                let mut value: &[u8];
-                let pos_byte_beg = cn.pos_byte_beg as usize;
-                let n_bytes = cn.n_bytes as usize;
-                let list_size = cn.list_size;
-                let is_big = cn.endian.is_big();
-                let bit_offset = cn.block.cn_bit_offset;
-                let bit_count = cn.block.cn_bit_count;
-                let builder = match cn.builder.as_deref_mut() {
-                    Some(b) => b,
-                    None => return Ok(()),
-                };
-                if pos_byte_beg.saturating_add(n_bytes) > record_length {
-                    bail!(
-                        "Channel '{}' field ({}..{}) exceeds record length {}",
-                        cn.unique_name,
-                        pos_byte_beg,
-                        pos_byte_beg.saturating_add(n_bytes),
-                        record_length
-                    );
-                }
-                match builder {
-                    ChannelBuilder::Int8(a) => {
-                        let data = a.values_slice_mut();
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            data[i + previous_index] = record[pos_byte_beg] as i8;
-                        }
-                    }
-                    ChannelBuilder::UInt8(a) => {
-                        let data = a.values_slice_mut();
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            data[i + previous_index] = record[pos_byte_beg];
-                        }
-                    }
-                    ChannelBuilder::Int16(a) => {
-                        let data = a.values_slice_mut();
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            data[i + previous_index] = read_i16_at(record, pos_byte_beg, is_big);
-                        }
-                    }
-                    ChannelBuilder::UInt16(a) => {
-                        let data = a.values_slice_mut();
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            data[i + previous_index] = read_u16_at(record, pos_byte_beg, is_big);
-                        }
-                    }
-                    ChannelBuilder::Int32(a) => {
-                        let data = a.values_slice_mut();
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            data[i + previous_index] =
-                                read_i32_at(record, pos_byte_beg, n_bytes, is_big);
-                        }
-                    }
-                    ChannelBuilder::UInt32(a) => {
-                        let data = a.values_slice_mut();
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            data[i + previous_index] =
-                                read_u32_at(record, pos_byte_beg, n_bytes, is_big);
-                        }
-                    }
-                    ChannelBuilder::Float32(a) => {
-                        let data = a.values_slice_mut();
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            data[i + previous_index] =
-                                read_f32_at(record, pos_byte_beg, n_bytes, is_big);
-                        }
-                    }
-                    ChannelBuilder::Int64(a) => {
-                        let data = a.values_slice_mut();
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            data[i + previous_index] = read_i64_at(
-                                record,
-                                pos_byte_beg,
-                                n_bytes,
-                                is_big,
-                                bit_offset,
-                                bit_count,
-                            );
-                        }
-                    }
-                    ChannelBuilder::UInt64(a) => {
-                        let data = a.values_slice_mut();
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            data[i + previous_index] = read_u64_at(
-                                record,
-                                pos_byte_beg,
-                                n_bytes,
-                                is_big,
-                                bit_offset,
-                                bit_count,
-                            );
-                        }
-                    }
-                    ChannelBuilder::Float64(a) => {
-                        let data = a.values_slice_mut();
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            data[i + previous_index] = read_f64_at(record, pos_byte_beg, is_big);
-                        }
-                    }
-                    ChannelBuilder::Complex32(a) => {
-                        let data = a.values_slice_mut();
-                        let complex_elems = (list_size / 2).max(1);
-                        let elem_bytes = if n_bytes <= 4 { 2 } else { 4 };
-                        let pair_bytes = elem_bytes * 2;
-                        let row_bytes = complex_elems * pair_bytes;
-                        if pos_byte_beg.saturating_add(row_bytes) > record_length {
-                            bail!(
-                                "Channel '{}' complex32 ({}..{}) exceeds record length {}",
-                                cn.unique_name,
-                                pos_byte_beg,
-                                pos_byte_beg.saturating_add(row_bytes),
-                                record_length
-                            );
-                        }
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            let row_start = (i + previous_index) * complex_elems * 2;
-                            for k in 0..complex_elems {
-                                let dst_idx = row_start + k * 2;
-                                let src_off = pos_byte_beg + k * pair_bytes;
-                                data[dst_idx] = read_f32_at(record, src_off, elem_bytes, is_big);
-                                data[dst_idx + 1] =
-                                    read_f32_at(record, src_off + elem_bytes, elem_bytes, is_big);
-                            }
-                        }
-                    }
-                    ChannelBuilder::Complex64(a) => {
-                        let data = a.values_slice_mut();
-                        let complex_elems = (list_size / 2).max(1);
-                        let row_bytes = complex_elems * 16;
-                        if pos_byte_beg.saturating_add(row_bytes) > record_length {
-                            bail!(
-                                "Channel '{}' complex64 ({}..{}) exceeds record length {}",
-                                cn.unique_name,
-                                pos_byte_beg,
-                                pos_byte_beg.saturating_add(row_bytes),
-                                record_length
-                            );
-                        }
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            let row_start = (i + previous_index) * complex_elems * 2;
-                            for k in 0..complex_elems {
-                                let dst_idx = row_start + k * 2;
-                                let src_off = pos_byte_beg + k * 16;
-                                data[dst_idx] = read_f64_at(record, src_off, is_big);
-                                data[dst_idx + 1] = read_f64_at(record, src_off + 8, is_big);
-                            }
-                        }
-                    }
-                    ChannelBuilder::Utf8(array) => {
-                        if cn.block.cn_data_type == 6 {
-                            // SBC ISO-8859-1 to be converted into UTF8
-                            let mut decoder = WINDOWS_1252.new_decoder();
-                            let mut dst = String::with_capacity(n_bytes);
-                            for record in data_chunk.chunks_exact(record_length) {
-                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                dst.clear();
-                                let (_result, _size, _replacement) =
-                                    decoder.decode_to_string(value, &mut dst, false);
-                                let s = dst.split('\0').next().unwrap_or("");
-                                array.append_value(s);
-                            }
-                        } else if cn.block.cn_data_type == 7 {
-                            // 7: String UTF8
-                            for record in data_chunk.chunks_exact(record_length) {
-                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                let full = str::from_utf8(value).context("Found invalid UTF-8")?;
-                                let s = full.split('\0').next().unwrap_or("");
-                                array.append_value(s);
-                            }
-                        } else if cn.block.cn_data_type == 8 || cn.block.cn_data_type == 9 {
-                            // 8 | 9 :String UTF16 to be converted into UTF8
-                            let mut dst = String::with_capacity(n_bytes);
-                            if cn.endian.is_big() {
-                                let mut decoder = UTF_16BE.new_decoder();
-                                for record in data_chunk.chunks_exact(record_length) {
-                                    value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                    dst.clear();
-                                    let (_result, _size, _replacement) =
-                                        decoder.decode_to_string(value, &mut dst, false);
-                                    let s = dst.split('\0').next().unwrap_or("");
-                                    array.append_value(s);
-                                }
-                            } else {
-                                let mut decoder = UTF_16LE.new_decoder();
-                                for record in data_chunk.chunks_exact(record_length) {
-                                    value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                    dst.clear();
-                                    let (_result, _size, _replacement) =
-                                        decoder.decode_to_string(value, &mut dst, false);
-                                    let s = dst.split('\0').next().unwrap_or("");
-                                    array.append_value(s);
-                                }
-                            }
-                        } else if cn.block.cn_data_type == 17 {
-                            // 17: Unicode with BOM
-                            let mut dst = String::with_capacity(n_bytes);
-                            for record in data_chunk.chunks_exact(record_length) {
-                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                // identifies BOM
-                                let bom = Bom::from(value);
-                                let mut decoder = match bom {
-                                    Bom::Utf8 => UTF_8.new_decoder(),
-                                    Bom::Utf16Be => UTF_16BE.new_decoder(),
-                                    Bom::Utf16Le => UTF_16LE.new_decoder(),
-                                    Bom::Gb18030 => GB18030.new_decoder(),
-                                    _ => {
-                                        bail!("not implemented BOM type");
-                                    }
-                                };
-                                dst.clear();
-                                let (_result, _size, _replacement) =
-                                    decoder.decode_to_string(value, &mut dst, false);
-                                let s = dst.split('\0').next().unwrap_or("");
-                                array.append_value(s);
-                            }
-                        }
-                    }
-                    ChannelBuilder::VariableSizeByteArray(array) => {
-                        for record in data_chunk.chunks_exact(record_length) {
-                            if pos_byte_beg + n_bytes <= record.len() {
-                                array.append_value(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
-                            } else {
-                                array.append_null();
-                            }
-                        }
-                    }
-                    ChannelBuilder::FixedSizeByteArray(a) => {
-                        for record in data_chunk.chunks_exact(record_length) {
-                            if pos_byte_beg + n_bytes <= record.len() {
-                                a.append_value(&record[pos_byte_beg..pos_byte_beg + n_bytes])
-                                    .context("failed appending new value")?;
-                            } else {
-                                a.append_null();
-                            }
-                        }
-                    }
-                    ChannelBuilder::ArrayDInt8(a) => {
-                        let data = a.values_slice_mut();
-                        let row_bytes = list_size;
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            let dst_start = (i + previous_index) * list_size;
-                            let src = &record[pos_byte_beg..pos_byte_beg + row_bytes];
-                            for (d, &s) in
-                                data[dst_start..dst_start + list_size].iter_mut().zip(src)
-                            {
-                                *d = s as i8;
-                            }
-                        }
-                    }
-                    ChannelBuilder::ArrayDUInt8(a) => {
-                        let data = a.values_slice_mut();
-                        let row_bytes = list_size;
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            let dst_start = (i + previous_index) * list_size;
-                            data[dst_start..dst_start + list_size]
-                                .copy_from_slice(&record[pos_byte_beg..pos_byte_beg + row_bytes]);
-                        }
-                    }
-                    ChannelBuilder::ArrayDInt16(a) => {
-                        let data = a.values_slice_mut();
-                        let row_bytes = list_size * 2;
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            let dst_start = (i + previous_index) * list_size;
-                            decode_i16_slice(
-                                &record[pos_byte_beg..pos_byte_beg + row_bytes],
-                                &mut data[dst_start..dst_start + list_size],
-                                is_big,
-                            )?;
-                        }
-                    }
-                    ChannelBuilder::ArrayDUInt16(a) => {
-                        let data = a.values_slice_mut();
-                        let row_bytes = list_size * 2;
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            let dst_start = (i + previous_index) * list_size;
-                            decode_u16_slice(
-                                &record[pos_byte_beg..pos_byte_beg + row_bytes],
-                                &mut data[dst_start..dst_start + list_size],
-                                is_big,
-                            )?;
-                        }
-                    }
-                    ChannelBuilder::ArrayDInt32(a) => {
-                        let data = a.values_slice_mut();
-                        let row_bytes = list_size * n_bytes;
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            let dst_start = (i + previous_index) * list_size;
-                            decode_i32_slice(
-                                &record[pos_byte_beg..pos_byte_beg + row_bytes],
-                                &mut data[dst_start..dst_start + list_size],
-                                n_bytes,
-                                is_big,
-                            )?;
-                        }
-                    }
-                    ChannelBuilder::ArrayDUInt32(a) => {
-                        let data = a.values_slice_mut();
-                        let row_bytes = list_size * n_bytes;
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            let dst_start = (i + previous_index) * list_size;
-                            decode_u32_slice(
-                                &record[pos_byte_beg..pos_byte_beg + row_bytes],
-                                &mut data[dst_start..dst_start + list_size],
-                                n_bytes,
-                                is_big,
-                            )?;
-                        }
-                    }
-                    ChannelBuilder::ArrayDFloat32(a) => {
-                        let data = a.values_slice_mut();
-                        let row_bytes = list_size * n_bytes;
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            let dst_start = (i + previous_index) * list_size;
-                            decode_f32_slice(
-                                &record[pos_byte_beg..pos_byte_beg + row_bytes],
-                                &mut data[dst_start..dst_start + list_size],
-                                n_bytes,
-                                is_big,
-                            )?;
-                        }
-                    }
-                    ChannelBuilder::ArrayDInt64(a) => {
-                        let data = a.values_slice_mut();
-                        let row_bytes = list_size * n_bytes;
-                        if pos_byte_beg.saturating_add(row_bytes) > record_length {
-                            bail!(
-                                "Channel '{}' array ({}..{}) exceeds record length {}",
-                                cn.unique_name,
-                                pos_byte_beg,
-                                pos_byte_beg.saturating_add(row_bytes),
-                                record_length
-                            );
-                        }
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            let dst_start = (i + previous_index) * list_size;
-                            decode_i64_slice(
-                                &record[pos_byte_beg..pos_byte_beg + row_bytes],
-                                &mut data[dst_start..dst_start + list_size],
-                                n_bytes,
-                                is_big,
-                                bit_offset,
-                                bit_count,
-                            )?;
-                        }
-                    }
-                    ChannelBuilder::ArrayDUInt64(a) => {
-                        let data = a.values_slice_mut();
-                        let row_bytes = list_size * n_bytes;
-                        if pos_byte_beg.saturating_add(row_bytes) > record_length {
-                            bail!(
-                                "Channel '{}' array ({}..{}) exceeds record length {}",
-                                cn.unique_name,
-                                pos_byte_beg,
-                                pos_byte_beg.saturating_add(row_bytes),
-                                record_length
-                            );
-                        }
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            let dst_start = (i + previous_index) * list_size;
-                            decode_u64_slice(
-                                &record[pos_byte_beg..pos_byte_beg + row_bytes],
-                                &mut data[dst_start..dst_start + list_size],
-                                n_bytes,
-                                is_big,
-                                bit_offset,
-                                bit_count,
-                            )?;
-                        }
-                    }
-                    ChannelBuilder::ArrayDFloat64(a) => {
-                        let data = a.values_slice_mut();
-                        let row_bytes = list_size * 8;
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            let dst_start = (i + previous_index) * list_size;
-                            decode_f64_slice(
-                                &record[pos_byte_beg..pos_byte_beg + row_bytes],
-                                &mut data[dst_start..dst_start + list_size],
-                                is_big,
-                            )?;
-                        }
-                    }
-                    ChannelBuilder::Union(_) => {} // Union channels are constructed post-read
-                }
-                // VLSC channels: offsets were read above, now mark for VD block processing
-                if cn.block.cn_type == 7 {
-                    let c_vlsd_channel = Arc::clone(&vlsd_channels);
-                    let mut vlsd_channel = c_vlsd_channel
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    vlsd_channel.push((cn.block.cn_type, *rec_pos));
-                }
+                Ok(acc)
+            },
+        )
+        .try_reduce(Vec::new, |mut left, right| {
+            if left.is_empty() {
+                Ok(right)
+            } else if right.is_empty() {
+                Ok(left)
             } else {
-                let mut is_dynamic =
-                    cn.block.cn_type == 1 || (cn.block.cn_flags & CN_F_DATA_STREAM_MODE != 0);
-                if !is_dynamic && let Some(composition) = &cn.composition {
-                    match &composition.block {
-                        Compo::CA(ca) if ca.ca_storage == 5 => is_dynamic = true,
-                        Compo::DS(_) => is_dynamic = true,
-                        Compo::CL(_) => is_dynamic = true, // Channel list - variable length
-                        Compo::CV(_) => {
-                            // Channel Variant - option channels parsed separately
-                            // discriminator determines which option is active
-                        }
-                        Compo::CU(_) => {
-                            // Channel Union - all members share same bytes
-                            // Members parsed as separate channels
-                        }
-                        _ => {}
-                    }
-                }
-
-                if is_dynamic {
-                    let c_vlsd_channel = Arc::clone(&vlsd_channels);
-                    let mut vlsd_channel = c_vlsd_channel
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    vlsd_channel.push((cn.block.cn_type, *rec_pos));
-                }
+                left.extend(right);
+                Ok(left)
             }
-            // Other channel types : virtual channels cn_type 3 & 6 are handled at initialisation
+        })
+        .with_context(|| {
+            format!("Parallel channels bytes reading failed for channel {channels:?}")
+        })?;
+
+    Ok(vlsd_channels)
+}
+
+/// Decodes one channel's records from `data_chunk` and returns `(cn_type, rec_pos)` when dynamic/VLSD follow-up is needed.
+fn decode_channel_chunk(
+    rec_pos: i64,
+    cn: &mut Cn4,
+    data_chunk: &[u8],
+    record_length: usize,
+    previous_index: usize,
+    record_with_invalid_data: bool,
+    cg_inval_bytes: usize,
+) -> Result<Option<(u8, i64)>, Error> {
+    let mut vlsd_entry = None;
+    if let Some(compo) = &cn.composition
+        && let Compo::CA(ca) = &compo.block
+        && (ca.ca_storage == 1 || ca.ca_storage == 2)
+    {
+        if ca.ca_storage == 1 {
             extract_record_invalid_bits(
                 cn,
                 data_chunk,
@@ -1720,16 +1338,437 @@ pub fn read_channels_from_bytes_with_inval(
                 record_with_invalid_data,
                 cg_inval_bytes,
             );
-            Ok(())
-        })
-        .with_context(|| {
-            format!("Parallel channels bytes reading failed for channel {channels:?}")
-        })?;
+        }
+        return Ok(None);
+    }
+    let is_dynamic_compo = matches!(
+        cn.composition.as_ref().map(|c| &c.block),
+        Some(Compo::DS(_) | Compo::CL(_))
+    ) || matches!(
+        cn.composition.as_ref().map(|c| &c.block),
+        Some(Compo::CA(ca)) if ca.ca_storage == 5
+    );
+    let is_vlsc_offset_channel = cn.block.cn_type == 7
+        && matches!(
+            cn.builder.as_deref(),
+            Some(
+                ChannelBuilder::UInt8(_)
+                    | ChannelBuilder::UInt16(_)
+                    | ChannelBuilder::UInt32(_)
+                    | ChannelBuilder::UInt64(_)
+            )
+        );
+    if (cn.block.cn_flags & CN_F_DATA_STREAM_MODE) == 0
+        && !is_dynamic_compo
+        && (cn.block.cn_type == 0
+            || cn.block.cn_type == 2
+            || cn.block.cn_type == 4
+            || cn.block.cn_type == 5
+            || is_vlsc_offset_channel)
+    {
+        let mut value: &[u8];
+        let pos_byte_beg = cn.pos_byte_beg as usize;
+        let n_bytes = cn.n_bytes as usize;
+        let list_size = cn.list_size;
+        let is_big = cn.endian.is_big();
+        let bit_offset = cn.block.cn_bit_offset;
+        let bit_count = cn.block.cn_bit_count;
+        let builder = match cn.builder.as_deref_mut() {
+            Some(b) => b,
+            None => return Ok(None),
+        };
+        if pos_byte_beg.saturating_add(n_bytes) > record_length {
+            bail!(
+                "Channel '{}' field ({}..{}) exceeds record length {}",
+                cn.unique_name,
+                pos_byte_beg,
+                pos_byte_beg.saturating_add(n_bytes),
+                record_length
+            );
+        }
+        match builder {
+            ChannelBuilder::Int8(a) => {
+                let data = a.values_slice_mut();
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    data[i + previous_index] = record[pos_byte_beg] as i8;
+                }
+            }
+            ChannelBuilder::UInt8(a) => {
+                let data = a.values_slice_mut();
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    data[i + previous_index] = record[pos_byte_beg];
+                }
+            }
+            ChannelBuilder::Int16(a) => {
+                let data = a.values_slice_mut();
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    data[i + previous_index] = read_i16_at(record, pos_byte_beg, is_big);
+                }
+            }
+            ChannelBuilder::UInt16(a) => {
+                let data = a.values_slice_mut();
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    data[i + previous_index] = read_u16_at(record, pos_byte_beg, is_big);
+                }
+            }
+            ChannelBuilder::Int32(a) => {
+                let data = a.values_slice_mut();
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    data[i + previous_index] = read_i32_at(record, pos_byte_beg, n_bytes, is_big);
+                }
+            }
+            ChannelBuilder::UInt32(a) => {
+                let data = a.values_slice_mut();
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    data[i + previous_index] = read_u32_at(record, pos_byte_beg, n_bytes, is_big);
+                }
+            }
+            ChannelBuilder::Float32(a) => {
+                let data = a.values_slice_mut();
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    data[i + previous_index] = read_f32_at(record, pos_byte_beg, n_bytes, is_big);
+                }
+            }
+            ChannelBuilder::Int64(a) => {
+                let data = a.values_slice_mut();
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    data[i + previous_index] =
+                        read_i64_at(record, pos_byte_beg, n_bytes, is_big, bit_offset, bit_count);
+                }
+            }
+            ChannelBuilder::UInt64(a) => {
+                let data = a.values_slice_mut();
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    data[i + previous_index] =
+                        read_u64_at(record, pos_byte_beg, n_bytes, is_big, bit_offset, bit_count);
+                }
+            }
+            ChannelBuilder::Float64(a) => {
+                let data = a.values_slice_mut();
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    data[i + previous_index] = read_f64_at(record, pos_byte_beg, is_big);
+                }
+            }
+            ChannelBuilder::Complex32(a) => {
+                let data = a.values_slice_mut();
+                let complex_elems = (list_size / 2).max(1);
+                let elem_bytes = if n_bytes <= 4 { 2 } else { 4 };
+                let pair_bytes = elem_bytes * 2;
+                let row_bytes = complex_elems * pair_bytes;
+                if pos_byte_beg.saturating_add(row_bytes) > record_length {
+                    bail!(
+                        "Channel '{}' complex32 ({}..{}) exceeds record length {}",
+                        cn.unique_name,
+                        pos_byte_beg,
+                        pos_byte_beg.saturating_add(row_bytes),
+                        record_length
+                    );
+                }
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    let row_start = (i + previous_index) * complex_elems * 2;
+                    for k in 0..complex_elems {
+                        let dst_idx = row_start + k * 2;
+                        let src_off = pos_byte_beg + k * pair_bytes;
+                        data[dst_idx] = read_f32_at(record, src_off, elem_bytes, is_big);
+                        data[dst_idx + 1] =
+                            read_f32_at(record, src_off + elem_bytes, elem_bytes, is_big);
+                    }
+                }
+            }
+            ChannelBuilder::Complex64(a) => {
+                let data = a.values_slice_mut();
+                let complex_elems = (list_size / 2).max(1);
+                let row_bytes = complex_elems * 16;
+                if pos_byte_beg.saturating_add(row_bytes) > record_length {
+                    bail!(
+                        "Channel '{}' complex64 ({}..{}) exceeds record length {}",
+                        cn.unique_name,
+                        pos_byte_beg,
+                        pos_byte_beg.saturating_add(row_bytes),
+                        record_length
+                    );
+                }
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    let row_start = (i + previous_index) * complex_elems * 2;
+                    for k in 0..complex_elems {
+                        let dst_idx = row_start + k * 2;
+                        let src_off = pos_byte_beg + k * 16;
+                        data[dst_idx] = read_f64_at(record, src_off, is_big);
+                        data[dst_idx + 1] = read_f64_at(record, src_off + 8, is_big);
+                    }
+                }
+            }
+            ChannelBuilder::Utf8(array) => {
+                if cn.block.cn_data_type == 6 {
+                    // SBC ISO-8859-1 to be converted into UTF8
+                    let mut decoder = WINDOWS_1252.new_decoder();
+                    let mut dst = String::with_capacity(n_bytes);
+                    for record in data_chunk.chunks_exact(record_length) {
+                        value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                        dst.clear();
+                        let (_result, _size, _replacement) =
+                            decoder.decode_to_string(value, &mut dst, false);
+                        let s = dst.split('\0').next().unwrap_or("");
+                        array.append_value(s);
+                    }
+                } else if cn.block.cn_data_type == 7 {
+                    // 7: String UTF8
+                    for record in data_chunk.chunks_exact(record_length) {
+                        value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                        let full = str::from_utf8(value).context("Found invalid UTF-8")?;
+                        let s = full.split('\0').next().unwrap_or("");
+                        array.append_value(s);
+                    }
+                } else if cn.block.cn_data_type == 8 || cn.block.cn_data_type == 9 {
+                    // 8 | 9 :String UTF16 to be converted into UTF8
+                    let mut dst = String::with_capacity(n_bytes);
+                    if cn.endian.is_big() {
+                        let mut decoder = UTF_16BE.new_decoder();
+                        for record in data_chunk.chunks_exact(record_length) {
+                            value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                            dst.clear();
+                            let (_result, _size, _replacement) =
+                                decoder.decode_to_string(value, &mut dst, false);
+                            let s = dst.split('\0').next().unwrap_or("");
+                            array.append_value(s);
+                        }
+                    } else {
+                        let mut decoder = UTF_16LE.new_decoder();
+                        for record in data_chunk.chunks_exact(record_length) {
+                            value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                            dst.clear();
+                            let (_result, _size, _replacement) =
+                                decoder.decode_to_string(value, &mut dst, false);
+                            let s = dst.split('\0').next().unwrap_or("");
+                            array.append_value(s);
+                        }
+                    }
+                } else if cn.block.cn_data_type == 17 {
+                    // 17: Unicode with BOM
+                    let mut dst = String::with_capacity(n_bytes);
+                    for record in data_chunk.chunks_exact(record_length) {
+                        value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                        // identifies BOM
+                        let bom = Bom::from(value);
+                        let mut decoder = match bom {
+                            Bom::Utf8 => UTF_8.new_decoder(),
+                            Bom::Utf16Be => UTF_16BE.new_decoder(),
+                            Bom::Utf16Le => UTF_16LE.new_decoder(),
+                            Bom::Gb18030 => GB18030.new_decoder(),
+                            _ => {
+                                bail!("not implemented BOM type");
+                            }
+                        };
+                        dst.clear();
+                        let (_result, _size, _replacement) =
+                            decoder.decode_to_string(value, &mut dst, false);
+                        let s = dst.split('\0').next().unwrap_or("");
+                        array.append_value(s);
+                    }
+                }
+            }
+            ChannelBuilder::VariableSizeByteArray(array) => {
+                for record in data_chunk.chunks_exact(record_length) {
+                    if pos_byte_beg + n_bytes <= record.len() {
+                        array.append_value(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
+                    } else {
+                        array.append_null();
+                    }
+                }
+            }
+            ChannelBuilder::FixedSizeByteArray(a) => {
+                for record in data_chunk.chunks_exact(record_length) {
+                    if pos_byte_beg + n_bytes <= record.len() {
+                        a.append_value(&record[pos_byte_beg..pos_byte_beg + n_bytes])
+                            .context("failed appending new value")?;
+                    } else {
+                        a.append_null();
+                    }
+                }
+            }
+            ChannelBuilder::ArrayDInt8(a) => {
+                let data = a.values_slice_mut();
+                let row_bytes = list_size;
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    let dst_start = (i + previous_index) * list_size;
+                    let src = &record[pos_byte_beg..pos_byte_beg + row_bytes];
+                    for (d, &s) in data[dst_start..dst_start + list_size].iter_mut().zip(src) {
+                        *d = s as i8;
+                    }
+                }
+            }
+            ChannelBuilder::ArrayDUInt8(a) => {
+                let data = a.values_slice_mut();
+                let row_bytes = list_size;
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    let dst_start = (i + previous_index) * list_size;
+                    data[dst_start..dst_start + list_size]
+                        .copy_from_slice(&record[pos_byte_beg..pos_byte_beg + row_bytes]);
+                }
+            }
+            ChannelBuilder::ArrayDInt16(a) => {
+                let data = a.values_slice_mut();
+                let row_bytes = list_size * 2;
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    let dst_start = (i + previous_index) * list_size;
+                    decode_i16_slice(
+                        &record[pos_byte_beg..pos_byte_beg + row_bytes],
+                        &mut data[dst_start..dst_start + list_size],
+                        is_big,
+                    )?;
+                }
+            }
+            ChannelBuilder::ArrayDUInt16(a) => {
+                let data = a.values_slice_mut();
+                let row_bytes = list_size * 2;
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    let dst_start = (i + previous_index) * list_size;
+                    decode_u16_slice(
+                        &record[pos_byte_beg..pos_byte_beg + row_bytes],
+                        &mut data[dst_start..dst_start + list_size],
+                        is_big,
+                    )?;
+                }
+            }
+            ChannelBuilder::ArrayDInt32(a) => {
+                let data = a.values_slice_mut();
+                let row_bytes = list_size * n_bytes;
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    let dst_start = (i + previous_index) * list_size;
+                    decode_i32_slice(
+                        &record[pos_byte_beg..pos_byte_beg + row_bytes],
+                        &mut data[dst_start..dst_start + list_size],
+                        n_bytes,
+                        is_big,
+                    )?;
+                }
+            }
+            ChannelBuilder::ArrayDUInt32(a) => {
+                let data = a.values_slice_mut();
+                let row_bytes = list_size * n_bytes;
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    let dst_start = (i + previous_index) * list_size;
+                    decode_u32_slice(
+                        &record[pos_byte_beg..pos_byte_beg + row_bytes],
+                        &mut data[dst_start..dst_start + list_size],
+                        n_bytes,
+                        is_big,
+                    )?;
+                }
+            }
+            ChannelBuilder::ArrayDFloat32(a) => {
+                let data = a.values_slice_mut();
+                let row_bytes = list_size * n_bytes;
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    let dst_start = (i + previous_index) * list_size;
+                    decode_f32_slice(
+                        &record[pos_byte_beg..pos_byte_beg + row_bytes],
+                        &mut data[dst_start..dst_start + list_size],
+                        n_bytes,
+                        is_big,
+                    )?;
+                }
+            }
+            ChannelBuilder::ArrayDInt64(a) => {
+                let data = a.values_slice_mut();
+                let row_bytes = list_size * n_bytes;
+                if pos_byte_beg.saturating_add(row_bytes) > record_length {
+                    bail!(
+                        "Channel '{}' array ({}..{}) exceeds record length {}",
+                        cn.unique_name,
+                        pos_byte_beg,
+                        pos_byte_beg.saturating_add(row_bytes),
+                        record_length
+                    );
+                }
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    let dst_start = (i + previous_index) * list_size;
+                    decode_i64_slice(
+                        &record[pos_byte_beg..pos_byte_beg + row_bytes],
+                        &mut data[dst_start..dst_start + list_size],
+                        n_bytes,
+                        is_big,
+                        bit_offset,
+                        bit_count,
+                    )?;
+                }
+            }
+            ChannelBuilder::ArrayDUInt64(a) => {
+                let data = a.values_slice_mut();
+                let row_bytes = list_size * n_bytes;
+                if pos_byte_beg.saturating_add(row_bytes) > record_length {
+                    bail!(
+                        "Channel '{}' array ({}..{}) exceeds record length {}",
+                        cn.unique_name,
+                        pos_byte_beg,
+                        pos_byte_beg.saturating_add(row_bytes),
+                        record_length
+                    );
+                }
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    let dst_start = (i + previous_index) * list_size;
+                    decode_u64_slice(
+                        &record[pos_byte_beg..pos_byte_beg + row_bytes],
+                        &mut data[dst_start..dst_start + list_size],
+                        n_bytes,
+                        is_big,
+                        bit_offset,
+                        bit_count,
+                    )?;
+                }
+            }
+            ChannelBuilder::ArrayDFloat64(a) => {
+                let data = a.values_slice_mut();
+                let row_bytes = list_size * 8;
+                for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                    let dst_start = (i + previous_index) * list_size;
+                    decode_f64_slice(
+                        &record[pos_byte_beg..pos_byte_beg + row_bytes],
+                        &mut data[dst_start..dst_start + list_size],
+                        is_big,
+                    )?;
+                }
+            }
+            ChannelBuilder::Union(_) => {} // Union channels are constructed post-read
+        }
+        // VLSC channels: offsets were read above, now mark for VD block processing
+        if cn.block.cn_type == 7 {
+            vlsd_entry = Some((cn.block.cn_type, rec_pos));
+        }
+    } else {
+        let mut is_dynamic =
+            cn.block.cn_type == 1 || (cn.block.cn_flags & CN_F_DATA_STREAM_MODE != 0);
+        if !is_dynamic && let Some(composition) = &cn.composition {
+            match &composition.block {
+                Compo::CA(ca) if ca.ca_storage == 5 => is_dynamic = true,
+                Compo::DS(_) => is_dynamic = true,
+                Compo::CL(_) => is_dynamic = true, // Channel list - variable length
+                Compo::CV(_) => {
+                    // Channel Variant - option channels parsed separately
+                    // discriminator determines which option is active
+                }
+                Compo::CU(_) => {
+                    // Channel Union - all members share same bytes
+                    // Members parsed as separate channels
+                }
+                _ => {}
+            }
+        }
 
-    let lock = vlsd_channels
-        .lock()
-        .map_err(|e| anyhow::anyhow!("Could not get lock from vlsd channel arc vec: {e}"))?;
-    Ok(lock.clone())
+        if is_dynamic {
+            vlsd_entry = Some((cn.block.cn_type, rec_pos));
+        }
+    }
+    // Other channel types : virtual channels cn_type 3 & 6 are handled at initialisation
+    extract_record_invalid_bits(
+        cn,
+        data_chunk,
+        record_length,
+        previous_index,
+        record_with_invalid_data,
+        cg_inval_bytes,
+    );
+    Ok(vlsd_entry)
 }
 
 #[cfg(test)]

@@ -900,7 +900,7 @@ pub(super) fn parse_cn4_block(
         cns = cnss;
     } else {
         compo = None;
-        shape = (vec![1], Order::RowMajor);
+        shape = (Vec::new(), Order::RowMajor);
         // list size calculation
         if block.cn_data_type == 15 || block.cn_data_type == 16 {
             //complex

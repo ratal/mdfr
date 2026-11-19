@@ -219,6 +219,8 @@ pub fn decompress_lz4_frame(input: &[u8], expected_uncompressed_len: usize) -> R
         )));
     }
     let flg = input[4];
+    let bd = input[5];
+    let is_independent = (flg & (1 << 5)) != 0;
     let has_content_size = (flg & (1 << 3)) != 0;
     let has_dict_id = (flg & 1) != 0;
     let has_block_checksum = (flg & (1 << 4)) != 0;
@@ -235,8 +237,23 @@ pub fn decompress_lz4_frame(input: &[u8], expected_uncompressed_len: usize) -> R
         )));
     }
 
-    let initial_cap = if expected_uncompressed_len > 0 {
-        expected_uncompressed_len.min(4 * 1024 * 1024)
+    let max_block_size = match (bd >> 4) & 0x07 {
+        4 => 64 * 1024,
+        5 => 256 * 1024,
+        6 => 1024 * 1024,
+        _ => 4 * 1024 * 1024,
+    };
+
+    let content_size = if expected_uncompressed_len > 0 {
+        expected_uncompressed_len
+    } else if has_content_size && input.len() >= 15 {
+        usize::try_from(u64::from_le_bytes(input[7..15].try_into().unwrap())).unwrap_or(0)
+    } else {
+        0
+    };
+
+    let initial_cap = if content_size > 0 {
+        content_size.min(16 * 1024 * 1024)
     } else {
         0
     };
@@ -260,18 +277,27 @@ pub fn decompress_lz4_frame(input: &[u8], expected_uncompressed_len: usize) -> R
         if uncompressed {
             out.extend_from_slice(block_data);
         } else {
-            let decomp_bound = if expected_uncompressed_len > 0 {
-                expected_uncompressed_len
+            let decomp_bound = if content_size > 0 {
+                content_size
                     .saturating_sub(out.len())
-                    .min(4 * 1024 * 1024)
+                    .min(max_block_size)
+                    .max(1)
             } else {
-                4 * 1024 * 1024
+                max_block_size
             };
-            let decomp =
-                lz4_flex::block::decompress(block_data, decomp_bound.max(1)).map_err(|_| {
-                    Error::InvalidBlock(alloc::string::String::from("lz4 block decompress failed"))
-                })?;
-            out.extend_from_slice(&decomp);
+            let start = out.len();
+            out.resize(start + decomp_bound, 0);
+            let res = if !is_independent && start > 0 {
+                let (prev, curr) = out.split_at_mut(start);
+                let dict_start = start.saturating_sub(64 * 1024);
+                lz4_flex::block::decompress_into_with_dict(block_data, curr, &prev[dict_start..])
+            } else {
+                lz4_flex::block::decompress_into(block_data, &mut out[start..])
+            };
+            let written = res.map_err(|_| {
+                Error::InvalidBlock(alloc::string::String::from("lz4 block decompress failed"))
+            })?;
+            out.truncate(start + written);
         }
         if has_block_checksum {
             if pos + 4 > input.len() {
